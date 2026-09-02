@@ -1,0 +1,3 @@
+import { NextRequest,NextResponse } from "next/server";
+import { getApiViewer } from "@/lib/auth";
+export async function PATCH(request:NextRequest){ const v=await getApiViewer(); if(!v.user||v.profile?.role!=="admin")return NextResponse.json({error:"Acesso negado."},{status:403}); const {id,approved,role}=await request.json(); const patch:Record<string,unknown>={updated_at:new Date().toISOString()}; if(typeof approved==="boolean")patch.approved=approved; if(role==="admin"||role==="reader")patch.role=role; const {error}=await v.supabase.from("profiles").update(patch).eq("id",id); return error?NextResponse.json({error:error.message},{status:400}):NextResponse.json({ok:true}); }

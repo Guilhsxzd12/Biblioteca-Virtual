@@ -1,0 +1,3 @@
+import Link from "next/link";
+import type { Book } from "@/lib/types";
+export function BookCard({book}:{book:Book}){ return <Link className="card book-card" href={`/livro/${book.id}`}>{book.cover_url?<img className="cover" src={book.cover_url} alt={`Capa de ${book.title}`}/>:<div className="cover-fallback">{book.title}</div>}<div className="book-body"><h2 className="book-title">{book.title}</h2><div className="meta">{book.author}</div><div className="row wrap" style={{marginTop:10}}>{book.year&&<span className="badge">{book.year}</span>}{book.categories?.name&&<span className="badge">{book.categories.name}</span>}</div></div></Link>; }

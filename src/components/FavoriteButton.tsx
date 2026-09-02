@@ -1,0 +1,3 @@
+"use client";
+import { useState } from "react";
+export function FavoriteButton({bookId,initial}:{bookId:string;initial:boolean}){ const [favorite,setFavorite]=useState(initial); const [loading,setLoading]=useState(false); async function toggle(){ setLoading(true); const next=!favorite; const r=await fetch("/api/favorites",{method:next?"POST":"DELETE",headers:{"content-type":"application/json"},body:JSON.stringify({bookId})}); if(r.ok)setFavorite(next); setLoading(false); } return <button className={`btn ${favorite?"secondary":""}`} disabled={loading} onClick={toggle}>{favorite?"★ Favorito":"☆ Adicionar aos favoritos"}</button>; }

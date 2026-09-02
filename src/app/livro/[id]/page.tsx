@@ -1,0 +1,7 @@
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import { AppShell } from "@/components/AppShell";
+import { FavoriteButton } from "@/components/FavoriteButton";
+import { requireApproved } from "@/lib/auth";
+import type { Book } from "@/lib/types";
+export default async function BookPage({params}:{params:Promise<{id:string}>}){ const {id}=await params; const {supabase,user}=await requireApproved(); const [{data:book},{data:favorite}]=await Promise.all([supabase.from("books").select("*,categories(name)").eq("id",id).maybeSingle(),supabase.from("favorites").select("book_id").eq("user_id",user.id).eq("book_id",id).maybeSingle()]); if(!book)notFound(); const b=book as Book; return <AppShell><main className="container"><section className="detail"><div>{b.cover_url?<img className="cover" src={b.cover_url} alt={`Capa de ${b.title}`}/>:<div className="cover-fallback">{b.title}</div>}</div><div><div className="row wrap">{b.year&&<span className="badge">{b.year}</span>}{b.pages&&<span className="badge">{b.pages} páginas</span>}{b.categories?.name&&<span className="badge">{b.categories.name}</span>}</div><h1>{b.title}</h1><h2 className="muted">{b.author}</h2><div className="row wrap" style={{margin:"22px 0"}}><Link className="btn" href={`/leitor/${b.id}`}>Ler agora</Link><FavoriteButton bookId={b.id} initial={Boolean(favorite)}/></div><h3>Sinopse</h3><div className="prose">{b.description||"Sinopse não informada."}</div></div></section></main></AppShell>; }

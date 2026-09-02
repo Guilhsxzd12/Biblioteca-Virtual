@@ -1,0 +1,4 @@
+import { NextRequest,NextResponse } from "next/server";
+import { getApiViewer } from "@/lib/auth";
+export async function POST(request:NextRequest){ const v=await getApiViewer(); if(!v.user||!v.profile||(!v.profile.approved&&v.profile.role!=="admin"))return NextResponse.json({error:"Acesso negado."},{status:403}); const {bookId}=await request.json(); const {error}=await v.supabase.from("favorites").upsert({user_id:v.user.id,book_id:bookId}); return error?NextResponse.json({error:error.message},{status:400}):NextResponse.json({ok:true}); }
+export async function DELETE(request:NextRequest){ const v=await getApiViewer(); if(!v.user)return NextResponse.json({error:"Não autenticado."},{status:401}); const {bookId}=await request.json(); const {error}=await v.supabase.from("favorites").delete().eq("user_id",v.user.id).eq("book_id",bookId); return error?NextResponse.json({error:error.message},{status:400}):NextResponse.json({ok:true}); }

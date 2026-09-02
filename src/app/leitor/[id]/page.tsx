@@ -1,0 +1,4 @@
+import { notFound } from "next/navigation";
+import { requireApproved } from "@/lib/auth";
+import { ReaderClient } from "@/components/ReaderClient";
+export default async function ReaderPage({params}:{params:Promise<{id:string}>}){ const {id}=await params; const {supabase,user}=await requireApproved(); const [{data:book},{data:progress}]=await Promise.all([supabase.from("books").select("id,title,pages").eq("id",id).maybeSingle(),supabase.from("reading_progress").select("current_page").eq("user_id",user.id).eq("book_id",id).maybeSingle()]); if(!book)notFound(); return <ReaderClient bookId={book.id} title={book.title} totalPages={book.pages||1} initialPage={progress?.current_page||1}/>; }
