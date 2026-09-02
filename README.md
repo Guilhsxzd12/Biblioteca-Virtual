@@ -13,6 +13,10 @@ Biblioteca privada em Next.js + Supabase + Google Drive.
 - Organização automática em `BIBLIOTECA VIRTUAL/A`, `B`, `C` ... `Z`.
 - PDFs continuam privados no Drive e são servidos apenas para usuários autorizados.
 
+## Produção
+
+Domínio principal atual: `https://biblioteca-virtual-umber.vercel.app`
+
 ## Variáveis da Vercel
 
 Use `.env.example` como referência. Nunca envie segredos para o GitHub.
@@ -29,6 +33,6 @@ Google OAuth:
 
 No Google Cloud, habilite a Google Drive API, crie um OAuth Client ID do tipo Web e adicione como redirect URI:
 
-`https://SEU-DOMINIO/api/drive/oauth/callback`
+`https://biblioteca-virtual-umber.vercel.app/api/drive/oauth/callback`
 
 Depois acesse Admin → Google Drive → Conectar Google Drive.
