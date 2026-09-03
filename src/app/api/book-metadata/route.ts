@@ -23,19 +23,29 @@ function norm(v:string){
   return v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
 }
 
+function normalizeLanguage(v?:string|null){
+  if(!v)return null;
+  const x=v.toLowerCase();
+  const map:Record<string,string>={por:"pt",ptbr:"pt",pt_br:"pt",eng:"en",spa:"es",fre:"fr",fra:"fr",ita:"it",ger:"de",deu:"de",jpn:"ja",chi:"zh",zho:"zh",rus:"ru"};
+  return map[x.replace(/[-]/g,"_")]||x.split(/[-_]/)[0]||null;
+}
+
 function score(item:BookMetadataResult,query:string){
   const q=norm(query),t=norm(item.title),a=norm(item.author||"");
   let s=0;
-  if(t===q)s+=100;
-  else if(t.startsWith(q))s+=70;
-  else if(t.includes(q))s+=45;
-  else for(const part of q.split(" ").filter(x=>x.length>2))if(t.includes(part))s+=8;
-  if(a&&a!=="autor nao informado")s+=3;
-  if(item.coverUrl)s+=4;
+  if(t===q)s+=120;
+  else if(t.startsWith(q))s+=80;
+  else if(t.includes(q))s+=55;
+  else for(const part of q.split(" ").filter(x=>x.length>2))if(t.includes(part))s+=9;
+  if(a&&a!=="autor nao informado")s+=8;
+  if(item.description)s+=10;
+  if(item.coverUrl)s+=5;
   if(item.year)s+=2;
-  if(item.pages)s+=1;
-  if(item.isEbook)s+=3;
-  if(item.categories?.length)s+=2;
+  if(item.pages)s+=2;
+  if(item.categories?.length)s+=3;
+  if(item.isEbook)s+=2;
+  if(item.language==="pt")s+=28;
+  else if(item.language==="es")s+=5;
   return s;
 }
 
@@ -44,21 +54,22 @@ function dedupe(items:BookMetadataResult[],query:string){
   return items
     .sort((a,b)=>score(b,query)-score(a,query))
     .filter(item=>{
-      const key=item.isbn?`isbn:${item.isbn}`:`${norm(item.title)}|${norm(item.author)}|${item.year||""}|${item.pages||""}`;
+      const key=item.isbn?`isbn:${item.isbn}`:`${norm(item.title)}|${norm(item.author)}|${item.language||""}|${item.year||""}`;
       if(seen.has(key))return false;
       seen.add(key);
       return true;
     })
-    .slice(0,30);
+    .slice(0,40);
 }
 
-async function googleBooks(query:string,{ebooks=false}:{ebooks?:boolean}={}){
+async function googleBooks(query:string,{ebooks=false,lang}:{ebooks?:boolean;lang?:string}={}){
   const url=new URL("https://www.googleapis.com/books/v1/volumes");
   url.searchParams.set("q",query);
   url.searchParams.set("printType","books");
   url.searchParams.set("maxResults","20");
   url.searchParams.set("orderBy","relevance");
   if(ebooks)url.searchParams.set("filter","ebooks");
+  if(lang)url.searchParams.set("langRestrict",lang);
   const r=await fetch(url,{cache:"no-store"});
   if(!r.ok)return [] as BookMetadataResult[];
   const p=await r.json();
@@ -67,17 +78,18 @@ async function googleBooks(query:string,{ebooks=false}:{ebooks?:boolean}={}){
     const isbn=(i.industryIdentifiers||[]).find((x:any)=>x.type==="ISBN_13")?.identifier||(i.industryIdentifiers||[]).find((x:any)=>x.type==="ISBN_10")?.identifier||(i.industryIdentifiers||[])[0]?.identifier||null;
     const isEbook=Boolean(ebooks||item.saleInfo?.isEbook||item.accessInfo?.epub?.isAvailable||item.accessInfo?.pdf?.isAvailable);
     return {
-      id:`g:${item.id}:${ebooks?"e":"b"}`,
+      id:`g:${item.id}:${ebooks?"e":"b"}:${lang||"all"}`,
       source:"google-books",
       title:i.title||"Título não informado",
       author:(i.authors||[]).join(", ")||"Autor não informado",
+      language:normalizeLanguage(i.language),
       year:yearFrom(i.publishedDate),
       pages:Number.isFinite(i.pageCount)?i.pageCount:null,
       description:cleanText(i.description),
       coverUrl:(i.imageLinks?.extraLarge||i.imageLinks?.large||i.imageLinks?.medium||i.imageLinks?.thumbnail||i.imageLinks?.smallThumbnail||null)?.replace("http://","https://"),
       isbn,
       isEbook,
-      categories:Array.isArray(i.categories)?i.categories.slice(0,8):[]
+      categories:Array.isArray(i.categories)?i.categories.slice(0,10):[]
     };
   });
 }
@@ -86,23 +98,24 @@ async function openLibrary(title:string,isbn:string|null){
   const url=new URL("https://openlibrary.org/search.json");
   if(isbn)url.searchParams.set("isbn",isbn);
   else url.searchParams.set("q",title);
-  url.searchParams.set("limit","25");
-  url.searchParams.set("fields","key,title,author_name,first_publish_year,cover_i,number_of_pages_median,isbn,ebook_access,public_scan_b,subject");
-  const r=await fetch(url,{headers:{"User-Agent":"BibliotecaVirtual/1.2"},cache:"no-store"});
+  url.searchParams.set("limit","35");
+  url.searchParams.set("fields","key,title,author_name,first_publish_year,cover_i,number_of_pages_median,isbn,ebook_access,public_scan_b,subject,language");
+  const r=await fetch(url,{headers:{"User-Agent":"BibliotecaVirtual/1.3"},cache:"no-store"});
   if(!r.ok)return [] as BookMetadataResult[];
   const p=await r.json();
   return (p.docs||[]).map((d:any):BookMetadataResult=>({
-    id:`o:${d.key}`,
+    id:`o:${d.key}:${d.language?.[0]||""}`,
     source:"open-library",
     title:d.title||title,
     author:(d.author_name||[]).join(", ")||"Autor não informado",
+    language:normalizeLanguage(d.language?.includes("por")?"por":d.language?.[0]),
     year:d.first_publish_year||null,
     pages:d.number_of_pages_median||null,
     description:null,
     coverUrl:d.cover_i?`https://covers.openlibrary.org/b/id/${d.cover_i}-L.jpg`:null,
     isbn:d.isbn?.find((x:string)=>String(x).replace(/[^0-9X]/gi,"").length===13)||d.isbn?.[0]||null,
     isEbook:Boolean(d.public_scan_b||d.ebook_access&&d.ebook_access!=="no_ebook"),
-    categories:Array.isArray(d.subject)?d.subject.slice(0,12):[]
+    categories:Array.isArray(d.subject)?d.subject.slice(0,14):[]
   }));
 }
 
@@ -119,6 +132,9 @@ export async function GET(request:NextRequest){
   const broadQuery=isbn?`isbn:${isbn}`:title;
 
   const settled=await Promise.allSettled([
+    googleBooks(exactQuery,{lang:"pt"}),
+    googleBooks(broadQuery,{lang:"pt"}),
+    googleBooks(broadQuery,{ebooks:true,lang:"pt"}),
     googleBooks(exactQuery),
     googleBooks(broadQuery),
     googleBooks(broadQuery,{ebooks:true}),
