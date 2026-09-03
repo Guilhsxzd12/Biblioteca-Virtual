@@ -11,6 +11,7 @@ function escapeXml(value:string){
 }
 function normalizeLanguage(value?:string|null){const raw=(value||"pt-BR").trim();return raw||"pt-BR";}
 function coverDriveId(url?:string|null){if(!url)return null;const match=url.match(/^\/api\/covers\/([^/?#]+)/);return match?.[1]?decodeURIComponent(match[1]):null;}
+function dirname(path:string){const i=path.lastIndexOf("/");return i>=0?path.slice(0,i+1):"";}
 
 export async function loadCoverBytes(url?:string|null):Promise<CoverData>{
   if(!url)throw new Error("Adicione uma capa antes de gerar a versão Kindle.");
@@ -58,9 +59,32 @@ export async function buildEpubFromPdf(pdfBytes:Uint8Array,meta:EpubMeta){
   return {bytes,pages:numPages};
 }
 
+function stripOldCoverProperty(opf:string){
+  return opf.replace(/<item\b[^>]*>/gi,item=>{
+    if(!/\bproperties=["'][^"']*\bcover-image\b/i.test(item))return item;
+    return item.replace(/\sproperties=["']([^"']*)["']/i,(_m,props)=>{const next=String(props).split(/\s+/).filter((p:string)=>p&&p!=="cover-image").join(" ");return next?` properties="${next}"`:"";});
+  });
+}
+
 export async function replaceEpubCover(epubBytes:Uint8Array,coverUrl:string){
-  const cover=await loadCoverBytes(coverUrl);const zip=await JSZip.loadAsync(epubBytes);const opfFile=zip.file("OEBPS/content.opf");const coverEntry=zip.file("OEBPS/images/cover");
-  if(!opfFile||!coverEntry)throw new Error("A versão Kindle precisa ser regenerada antes de trocar a capa.");
-  zip.file("OEBPS/images/cover",cover.bytes);let opf=await opfFile.async("text");opf=opf.replace(/(<item id="cover-image" href="images\/cover" media-type=")[^"]+(" properties="cover-image"\/>)/,`$1${cover.mimeType}$2`);zip.file("OEBPS/content.opf",opf);
+  const cover=await loadCoverBytes(coverUrl);const zip=await JSZip.loadAsync(epubBytes);
+  const container=await zip.file("META-INF/container.xml")?.async("text");
+  const opfPath=container?.match(/full-path=["']([^"']+)["']/i)?.[1];
+  if(!opfPath)throw new Error("Não foi possível localizar os metadados deste EPUB.");
+  const opfFile=zip.file(opfPath);if(!opfFile)throw new Error("Não foi possível abrir os metadados deste EPUB.");
+  let opf=await opfFile.async("text");const base=dirname(opfPath);
+  const ext=cover.mimeType==="image/png"?"png":cover.mimeType==="image/webp"?"webp":cover.mimeType==="image/gif"?"gif":"jpg";
+  const imageHref=`images/biblioteca-kindle-cover.${ext}`;const pageHref="biblioteca-kindle-cover.xhtml";
+  zip.file(`${base}${imageHref}`,cover.bytes);
+  zip.file(`${base}${pageHref}`,`<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Capa</title><style>html,body{margin:0;padding:0;text-align:center}img{max-width:100%;max-height:100vh}</style></head><body><img src="${imageHref}" alt="Capa"/></body></html>`);
+
+  opf=stripOldCoverProperty(opf);
+  opf=opf.replace(/<meta\b[^>]*name=["']cover["'][^>]*\/?\s*>/gi,"");
+  const imageItem=`<item id="biblioteca-kindle-cover-image" href="${imageHref}" media-type="${cover.mimeType}" properties="cover-image"/>`;
+  const pageItem=`<item id="biblioteca-kindle-cover-page" href="${pageHref}" media-type="application/xhtml+xml"/>`;
+  if(/<\/manifest>/i.test(opf))opf=opf.replace(/<\/manifest>/i,`${imageItem}${pageItem}</manifest>`);else throw new Error("EPUB inválido: manifesto não encontrado.");
+  if(/<\/metadata>/i.test(opf))opf=opf.replace(/<\/metadata>/i,`<meta name="cover" content="biblioteca-kindle-cover-image"/></metadata>`);
+  if(/<spine\b[^>]*>/i.test(opf))opf=opf.replace(/(<spine\b[^>]*>)/i,`$1<itemref idref="biblioteca-kindle-cover-page" linear="yes"/>`);else throw new Error("EPUB inválido: ordem de leitura não encontrada.");
+  zip.file(opfPath,opf);
   return zip.generateAsync({type:"uint8array",mimeType:"application/epub+zip",compression:"DEFLATE",compressionOptions:{level:6}});
 }
