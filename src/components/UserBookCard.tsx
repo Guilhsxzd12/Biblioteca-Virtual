@@ -3,8 +3,9 @@ import { KindleShareButton } from "@/components/KindleShareButton";
 
 export function UserBookCard({book}:{book:UserBook}){
   const status=book.moderation_status==="catalog"?"No catálogo":book.moderation_status==="private"?"Privado":"Pendente";
-  return <article className="card book-card personal-book-card">
-    {book.cover_url?<img className="cover" src={book.cover_url} alt={`Capa de ${book.title}`}/>:<div className="cover-fallback">{book.title}</div>}
-    <div className="book-body"><h2 className="book-title">{book.title}</h2><div className="meta">{book.author}</div><div className="row wrap" style={{marginTop:10}}>{book.year&&<span className="badge">{book.year}</span>}{book.categories?.name&&<span className="badge">{book.categories.name}</span>}<span className="badge">{status}</span></div><div className="personal-actions"><KindleShareButton id={book.id} title={book.title} fileName={book.file_name}/><a className="btn ghost" href={`/api/user-books/${book.id}/file`}>Baixar EPUB</a></div></div>
+  const isPdf=book.mime_type==="application/pdf"||book.file_name.toLowerCase().endsWith(".pdf");
+  return <article className="book-card personal-book-card">
+    <div className="book-cover-wrap">{book.cover_url?<img className="cover" src={book.cover_url} alt={`Capa de ${book.title}`}/>:<div className="cover-fallback">{book.title}</div>}<span className="book-status-chip">{status}</span></div>
+    <div className="book-body"><h2 className="book-title">{book.title}</h2><div className="meta">{book.author}</div><div className="row wrap book-badges">{book.year&&<span className="badge">{book.year}</span>}{book.categories?.name&&<span className="badge">{book.categories.name}</span>}</div><div className="personal-actions"><KindleShareButton id={book.id} title={book.title} source="user"/>{isPdf&&<a className="btn ghost" href={`/api/user-books/${book.id}/file?inline=1`} target="_blank">Ler PDF</a>}</div></div>
   </article>;
 }
