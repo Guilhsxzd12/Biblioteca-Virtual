@@ -103,6 +103,13 @@ export async function findOrCreateCoversFolder(token:string){
   return findOrCreateChildFolder(token,"CAPAS",root);
 }
 
+async function findOrCreateUserFolder(token:string,userId:string,kind:"EBOOKS"|"CAPAS"){
+  const root=await findOrCreateRootFolder(token);
+  const users=await findOrCreateChildFolder(token,"USUARIOS",root);
+  const user=await findOrCreateChildFolder(token,userId,users);
+  return findOrCreateChildFolder(token,kind,user);
+}
+
 async function startResumableUpload(token:string,p:{fileName:string;mimeType:string;fileSize:number;folderId:string}){
   const response=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,mimeType,webViewLink",{
     method:"POST",
@@ -127,25 +134,39 @@ export async function createResumableUpload(p:{fileName:string;mimeType:string;f
   return {uploadUrl,folderId};
 }
 
+export async function createUserBookResumableUpload(p:{userId:string;fileName:string;mimeType:string;fileSize:number}){
+  const token=await getGoogleAccessToken();
+  const folderId=await findOrCreateUserFolder(token,p.userId,"EBOOKS");
+  const uploadUrl=await startResumableUpload(token,{fileName:p.fileName,mimeType:p.mimeType,fileSize:p.fileSize,folderId});
+  return {uploadUrl,folderId};
+}
+
+async function uploadFileToFolder(file:File,folderId:string){
+  const token=await getGoogleAccessToken();
+  const safeBase=file.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9._-]+/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"")||"arquivo";
+  const fileName=`${Date.now()}-${safeBase}`;
+  const mimeType=file.type||"application/octet-stream";
+  const uploadUrl=await startResumableUpload(token,{fileName,mimeType,fileSize:file.size,folderId});
+  const response=await fetch(uploadUrl,{method:"PUT",headers:{"content-type":mimeType,"content-length":String(file.size)},body:await file.arrayBuffer()});
+  if(!response.ok){
+    const text=await response.text();
+    throw new Error(`Upload falhou (${response.status}): ${text.slice(0,180)}`);
+  }
+  const uploaded=await response.json() as {id:string;name:string;mimeType:string};
+  if(!uploaded.id)throw new Error("Google Drive não retornou o ID do arquivo.");
+  return uploaded;
+}
+
 export async function uploadCoverToDrive(file:File){
   const token=await getGoogleAccessToken();
   const folderId=await findOrCreateCoversFolder(token);
-  const safeBase=file.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9._-]+/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"")||"capa";
-  const fileName=`${Date.now()}-${safeBase}`;
-  const mimeType=file.type||"image/jpeg";
-  const uploadUrl=await startResumableUpload(token,{fileName,mimeType,fileSize:file.size,folderId});
-  const response=await fetch(uploadUrl,{
-    method:"PUT",
-    headers:{"content-type":mimeType,"content-length":String(file.size)},
-    body:await file.arrayBuffer()
-  });
-  if(!response.ok){
-    const text=await response.text();
-    throw new Error(`Upload da capa falhou (${response.status}): ${text.slice(0,180)}`);
-  }
-  const uploaded=await response.json() as {id:string;name:string;mimeType:string};
-  if(!uploaded.id)throw new Error("Google Drive não retornou o ID da capa.");
-  return uploaded;
+  return uploadFileToFolder(file,folderId);
+}
+
+export async function uploadUserCoverToDrive(file:File,userId:string){
+  const token=await getGoogleAccessToken();
+  const folderId=await findOrCreateUserFolder(token,userId,"CAPAS");
+  return uploadFileToFolder(file,folderId);
 }
 
 export async function fetchDriveFile(fileId:string,range?:string|null){
