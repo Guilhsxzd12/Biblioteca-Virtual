@@ -65,7 +65,7 @@ async function pdfMetadata(bytes:Uint8Array){
     const meta=await pdf.getMetadata() as any;const info=meta?.info||{};
     const title=typeof info.Title==="string"?info.Title.trim():"";const author=typeof info.Author==="string"?info.Author.trim():"";
     const creation=typeof info.CreationDate==="string"?info.CreationDate:"";const result={title:title||null,author:author||null,description:null as string|null,year:yearFrom(creation),pages:pdf.numPages||null,language:null as string|null};
-    await pdf.destroy();return result;
+    await loading.destroy();return result;
   }catch{return null;}
 }
 
