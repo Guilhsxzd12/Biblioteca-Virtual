@@ -95,7 +95,18 @@ async function launchBrowser(){
     args,
     executablePath:await chromium.executablePath(),
     headless:"shell",
-    defaultViewport:{width:1200,height:1600,deviceScaleFactor:1,hasTouch:false,isLandscape:false,isMobile:false}
+    defaultViewport:{width:794,height:1123,deviceScaleFactor:1,hasTouch:false,isLandscape:false,isMobile:false}
+  });
+}
+
+async function waitForChapterAssets(page:Awaited<ReturnType<Awaited<ReturnType<typeof launchBrowser>>["newPage"]>>){
+  await page.evaluate(async()=>{
+    const fonts=(document as Document&{fonts?:FontFaceSet}).fonts;
+    if(fonts)await fonts.ready;
+    await Promise.all(Array.from(document.images).map(image=>image.complete?Promise.resolve():new Promise<void>(resolve=>{
+      image.addEventListener("load",()=>resolve(),{once:true});
+      image.addEventListener("error",()=>resolve(),{once:true});
+    })));
   });
 }
 
@@ -129,15 +140,18 @@ export async function buildPdfFromEpub(epubBytes:Uint8Array,meta:PdfMeta){
       }
       void request.abort();
     });
-    await page.emulateMediaType("print");
+
+    // EPUBs are designed for on-screen readers. Using screen media avoids
+    // activating print-only CSS that can change typography and spacing.
+    await page.emulateMediaType("screen");
 
     for(const chapter of spine){
       const chapterPath=resolve(root,chapter);
       if(!withinRoot(root,chapterPath))continue;
-      const response=await page.goto(pathToFileURL(chapterPath).href,{waitUntil:"load",timeout:20000});
+      const response=await page.goto(pathToFileURL(chapterPath).href,{waitUntil:"networkidle0",timeout:30000});
       if(!response&&!(await page.content()).trim())continue;
-      await page.addStyleTag({content:"@media print{html,body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}"});
-      await page.evaluate(async()=>{const fonts=(document as Document&{fonts?:FontFaceSet}).fonts;if(fonts)await fonts.ready;});
+      await page.addStyleTag({content:"html,body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}"});
+      await waitForChapterAssets(page);
       const chapterPdf=await page.pdf({
         format:"A4",
         preferCSSPageSize:true,
