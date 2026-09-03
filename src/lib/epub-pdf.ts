@@ -115,9 +115,9 @@ function buildPdf(pages:string[][]){
   pages.forEach((lines,index)=>{
     const pageId=4+index*2,contentId=pageId+1;
     objects.set(pageId,Buffer.from(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`,"latin1"));
-    const commands=["BT","/F1 11 Tf","15 TL","54 788 Td",...lines.flatMap(line=>[`(${pdfEscape(line)}) Tj","T*"]),"ET"].join("\n");
+    const commands=["BT","/F1 11 Tf","15 TL","54 788 Td",...lines.flatMap(line=>[`(${pdfEscape(line)}) Tj`,"T*"]),"ET"].join("\n");
     const stream=Buffer.from(commands,"latin1");
-    objects.set(contentId,Buffer.concat([Buffer.from(`<< /Length ${stream.length} >>\nstream\n`,`latin1`),stream,Buffer.from("\nendstream","latin1")]));
+    objects.set(contentId,Buffer.concat([Buffer.from(`<< /Length ${stream.length} >>\nstream\n`,"latin1"),stream,Buffer.from("\nendstream","latin1")]));
   });
   const maxId=Math.max(...objects.keys());const parts:Buffer[]=[Buffer.from("%PDF-1.4\n%âãÏÓ\n","latin1")];const offsets=new Array<number>(maxId+1).fill(0);let offset=parts[0].length;
   for(let id=1;id<=maxId;id++){
