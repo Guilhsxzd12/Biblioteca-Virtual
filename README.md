@@ -41,3 +41,5 @@ No Google Cloud, habilite a Google Drive API, crie um OAuth Client ID do tipo We
 `https://biblioteca-virtual-cineclubs-projects.vercel.app/api/drive/oauth/callback`
 
 Depois acesse Admin → Google Drive → Conectar Google Drive.
+
+<!-- redeploy: OAuth env configured -->
