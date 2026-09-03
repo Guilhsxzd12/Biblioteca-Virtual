@@ -15,7 +15,12 @@ Biblioteca privada em Next.js + Supabase + Google Drive.
 
 ## Produção
 
-Domínio principal atual: `https://biblioteca-virtual-umber.vercel.app`
+Domínio principal atual: `https://biblioteca-virtual-cineclubs-projects.vercel.app`
+
+Páginas públicas para Google OAuth:
+- `https://biblioteca-virtual-cineclubs-projects.vercel.app/sobre`
+- `https://biblioteca-virtual-cineclubs-projects.vercel.app/politica-de-privacidade`
+- `https://biblioteca-virtual-cineclubs-projects.vercel.app/termos-de-servico`
 
 ## Variáveis da Vercel
 
@@ -33,6 +38,6 @@ Google OAuth:
 
 No Google Cloud, habilite a Google Drive API, crie um OAuth Client ID do tipo Web e adicione como redirect URI:
 
-`https://biblioteca-virtual-umber.vercel.app/api/drive/oauth/callback`
+`https://biblioteca-virtual-cineclubs-projects.vercel.app/api/drive/oauth/callback`
 
 Depois acesse Admin → Google Drive → Conectar Google Drive.
