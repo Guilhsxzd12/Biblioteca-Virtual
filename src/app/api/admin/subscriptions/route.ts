@@ -4,6 +4,8 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { activateSubscription,cancelSubscription } from "@/lib/subscription";
 import { sendTelegramMessage,telegramMainKeyboard } from "@/lib/telegram";
 
+function date(value:string){return new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo",day:"2-digit",month:"2-digit",year:"numeric"}).format(new Date(value));}
+
 export async function GET(){
   try{
     await requireAdmin();const admin=createAdminSupabaseClient();
@@ -23,16 +25,15 @@ export async function PATCH(request:NextRequest){
   try{
     const viewer=await requireAdmin();const body=await request.json();const userId=String(body.userId||"").trim();const action=String(body.action||"");
     if(!userId)return NextResponse.json({error:"Usuário obrigatório."},{status:400});
-    const admin=createAdminSupabaseClient();
-    let subscription;
+    const admin=createAdminSupabaseClient();let subscription;
     if(action==="activate"){
-      const days=Math.max(1,Math.min(365,Number(body.days)||30));subscription=await activateSubscription(userId,days,viewer.user.id,`Pagamento confirmado manualmente (+${days} dias)`);
+      subscription=await activateSubscription(userId,viewer.user.id,"Pagamento confirmado manualmente — 30 dias");
       const {data:tg}=await admin.from("telegram_accounts").select("chat_id").eq("user_id",userId).maybeSingle();
-      if(tg?.chat_id){const date=new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo"}).format(new Date(subscription.active_until));try{await sendTelegramMessage(tg.chat_id,`✅ <b>Pagamento confirmado!</b>\n\nSua assinatura da Biblioteca Virtual foi liberada até <b>${date}</b>.\n\nO que você deseja fazer?`,telegramMainKeyboard());}catch(error){console.warn("[subscription-admin] aviso Telegram falhou",error);}}
+      if(tg?.chat_id)try{await sendTelegramMessage(tg.chat_id,`🎉 <b>Pagamento confirmado!</b>\n\nSua assinatura da Biblioteca Virtual está ativa.\n\n📅 <b>Início:</b> ${date(subscription.activated_at)}\n⏳ <b>Vencimento:</b> ${date(subscription.active_until)}\n🗓 <b>Período:</b> 30 dias\n\nSeu acesso a downloads, EPUB para Kindle e envios pelo bot já está liberado.`,telegramMainKeyboard());}catch(error){console.warn("[subscription-admin] aviso Telegram falhou",error);}
     }else if(action==="cancel"){
       subscription=await cancelSubscription(userId,viewer.user.id);
       const {data:tg}=await admin.from("telegram_accounts").select("chat_id").eq("user_id",userId).maybeSingle();
-      if(tg?.chat_id)try{await sendTelegramMessage(tg.chat_id,"⚠️ Sua assinatura da Biblioteca Virtual foi desativada pelo administrador.");}catch(error){console.warn("[subscription-admin] aviso Telegram falhou",error);}
+      if(tg?.chat_id)try{await sendTelegramMessage(tg.chat_id,"⚠️ <b>Assinatura desativada</b>\n\nSeu acesso aos recursos da Biblioteca Virtual foi desativado pelo administrador. Para renovar, consulte Minha Assinatura no bot.");}catch(error){console.warn("[subscription-admin] aviso Telegram falhou",error);}
     }else return NextResponse.json({error:"Ação inválida."},{status:400});
     return NextResponse.json({subscription});
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Falha ao atualizar assinatura."},{status:400});}

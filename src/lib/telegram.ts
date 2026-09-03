@@ -21,8 +21,7 @@ export async function sendTelegramMessage(chatId:number|string,text:string,reply
 
 export async function sendTelegramDocument(chatId:number|string,fileName:string,mimeType:string,bytes:Uint8Array,caption?:string){
   if(bytes.byteLength>TELEGRAM_MAX_OUTGOING_BYTES)throw new Error("Este arquivo ultrapassa o limite de envio do Telegram.");
-  const form=new FormData();
-  form.set("chat_id",String(chatId));
+  const form=new FormData();form.set("chat_id",String(chatId));
   const arrayBuffer=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;
   form.set("document",new Blob([arrayBuffer],{type:mimeType||"application/octet-stream"}),fileName||"livro");
   if(caption){form.set("caption",caption);form.set("parse_mode","HTML");}
@@ -44,33 +43,44 @@ export async function getTelegramFile(fileId:string){
 }
 
 export async function answerTelegramCallback(id:string,text?:string){return telegramApi("answerCallbackQuery",{callback_query_id:id,...(text?{text}:{})});}
-
 export async function getTelegramBot(){return telegramApi<{id:number;username?:string;first_name:string}>("getMe");}
 
 export async function setupTelegramWebhook(){
   const url=`${getSiteOrigin()}/api/telegram/webhook`;
   await telegramApi("setWebhook",{url,secret_token:telegramWebhookSecret(),allowed_updates:["message","callback_query"],drop_pending_updates:false});
-  await telegramApi("setMyCommands",{commands:[{command:"start",description:"Abrir a Biblioteca Virtual"},{command:"menu",description:"Baixar ou enviar um livro"},{command:"baixar",description:"Pesquisar e baixar um livro"},{command:"enviar",description:"Enviar PDF ou EPUB para minha biblioteca"},{command:"status",description:"Ver minha assinatura"},{command:"assinatura",description:"Ver pagamento e renovação"}]});
+  await telegramApi("setMyCommands",{commands:[
+    {command:"start",description:"Abrir a Biblioteca Virtual"},
+    {command:"menu",description:"Abrir o menu principal"},
+    {command:"baixar",description:"Pesquisar e baixar um livro"},
+    {command:"enviar",description:"Enviar PDF ou EPUB para a biblioteca"},
+    {command:"historico",description:"Ver livros baixados pelo bot"},
+    {command:"envios",description:"Ver e editar meus livros enviados"},
+    {command:"assinatura",description:"Consultar minha assinatura"}
+  ]});
   return {url,bot:await getTelegramBot()};
 }
 
 export function telegramMainKeyboard(){
-  return {inline_keyboard:[[{text:"⬇️ BAIXAR",callback_data:"action_download"},{text:"⬆️ ENVIAR",callback_data:"action_upload"}],[{text:"💳 Minha assinatura",callback_data:"show_subscription"},{text:"📚 Abrir site",url:`${getSiteOrigin()}/biblioteca`}]]};
+  return {inline_keyboard:[
+    [{text:"🔎 BAIXAR",callback_data:"action_download"},{text:"➕ ENVIAR",callback_data:"action_upload"}],
+    [{text:"🕘 HISTÓRICO",callback_data:"show_history"},{text:"📤 MEUS ENVIOS",callback_data:"show_uploads"}],
+    [{text:"💳 MINHA ASSINATURA",callback_data:"show_subscription"}],
+    [{text:"🌐 ABRIR BIBLIOTECA",url:`${getSiteOrigin()}/biblioteca`}]
+  ]};
 }
 
 export function telegramBackToMenuKeyboard(){return {inline_keyboard:[[{text:"↩️ Voltar ao menu",callback_data:"show_menu"}]]};}
-
 export function paymentUrl(){return process.env.SUBSCRIPTION_PAYMENT_URL?.trim()||"";}
 export function receiptUsername(){return (process.env.PAYMENT_RECEIPT_USERNAME?.trim()||"guilh2026").replace(/^@/,"");}
 
 export function paymentMessage(){
   const user=receiptUsername();
-  return `💳 <b>Assinatura Biblioteca Virtual — R$ 8,90/mês</b>\n\nPague pelo link abaixo.\n\nDepois do pagamento, envie o comprovante para <b>@${user}</b> e informe seu @ do Telegram.\n\nAssim que o pagamento for confirmado, seu acesso será liberado por <b>30 dias</b>.`;
+  return `📚 <b>Biblioteca Virtual</b>\n\nSua assinatura ainda não está ativa.\n\n💳 <b>Plano mensal: R$ 8,90</b>\n📅 <b>Duração: 30 dias</b>\n\n1️⃣ Faça o pagamento pelo botão abaixo.\n2️⃣ Envie o comprovante para <b>@${user}</b>.\n3️⃣ Depois da confirmação manual, seu acesso a downloads e envios será liberado por 30 dias.\n\nSe você já pagou, toque em <b>Já paguei</b>.`;
 }
 
 export function paymentKeyboard(){
   const rows:Array<Array<Record<string,string>>> = [];
-  const url=paymentUrl();if(url)rows.push([{text:"💳 Pagar assinatura",url}]);
-  rows.push([{text:"✅ Já paguei",callback_data:"subscription_paid"}]);
+  const url=paymentUrl();if(url)rows.push([{text:"💳 PAGAR ASSINATURA",url}]);
+  rows.push([{text:"✅ JÁ PAGUEI",callback_data:"subscription_paid"}]);
   return {inline_keyboard:rows};
 }
