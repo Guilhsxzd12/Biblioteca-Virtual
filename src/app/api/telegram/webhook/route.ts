@@ -103,7 +103,7 @@ async function promptDownload(user:TgUser,chatId:number){
 async function promptUpload(user:TgUser,chatId:number){
   const access=await requireBotAccess(user,chatId);if(!access)return;
   await setState(user.id,"upload_file",{});
-  await sendTelegramMessage(chatId,"➕ <b>Enviar um livro — etapa 1 de 2</b>\n\nEnvie aqui o arquivo do livro em <b>PDF</b> ou <b>EPUB</b>.\n\n🔎 Vou tentar reconhecer automaticamente o título, autor e outras informações pelo arquivo e pelo nome dele.\n🖼 Depois eu vou pedir a <b>capa do livro</b>.\n\nQuando terminar, o envio ficará <b>aguardando sua aprovação no painel administrativo</b> e também aparecerá em Minha Biblioteca do usuário.",telegramBackToMenuKeyboard());
+  await sendTelegramMessage(chatId,"➕ <b>Enviar um livro — etapa 1 de 2</b>\n\nEnvie aqui o arquivo do livro em <b>PDF</b> ou <b>EPUB</b>.\n\n🔎 Vou tentar reconhecer automaticamente o título, autor e outras informações pelo arquivo e pelo nome dele.\n🖼 Depois eu vou pedir a <b>capa do livro</b>.\n\nQuando terminar, ele aparecerá em <b>Minha Biblioteca</b> e você poderá acompanhar o envio em <b>Meus Envios</b>.",telegramBackToMenuKeyboard());
 }
 
 async function loadBookForAccess(access:Access,source:BookSource,id:string){
@@ -140,7 +140,7 @@ async function sendBookFormat(user:TgUser,chatId:number,source:BookSource,id:str
       const ensured=await ensureKindleVersion(createAdminSupabaseClient(),access.userId,source,id);driveFileId=ensured.driveFileId;fileName=ensured.fileName;mimeType="application/epub+zip";
     }catch(error){await sendTelegramMessage(chatId,`⚠️ <b>Não consegui preparar o EPUB.</b>\n\n${escapeHtml(error instanceof Error?error.message:"A conversão não pôde ser concluída.")}\n\nSe houver PDF disponível, você ainda pode baixá-lo.`,{inline_keyboard:[[{text:"📄 TENTAR PDF",callback_data:`format:${sourceChar(source)}:${id}:pdf`}],[{text:"↩️ Menu",callback_data:"show_menu"}]]});return;}
   }
-  await sendTelegramMessage(chatId,`⏳ <b>Buscando o arquivo no Google Drive...</b>\n${escapeHtml(book.title)}`);
+  await sendTelegramMessage(chatId,`⏳ <b>Preparando seu arquivo...</b>\n${escapeHtml(book.title)}`);
   const response=await fetchDriveFile(driveFileId);const declaredSize=Number(response.headers.get("content-length")||0);
   if(declaredSize>TELEGRAM_MAX_OUTGOING_BYTES){await sendTelegramMessage(chatId,"⚠️ Esse arquivo ultrapassa o tamanho que o bot consegue enviar pelo Telegram. Ele continua disponível pelo site.",telegramMainKeyboard());return;}
   const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.byteLength>TELEGRAM_MAX_OUTGOING_BYTES){await sendTelegramMessage(chatId,"⚠️ Esse arquivo ultrapassa o tamanho que o bot consegue enviar pelo Telegram. Ele continua disponível pelo site.",telegramMainKeyboard());return;}
@@ -182,12 +182,12 @@ async function resendHistory(user:TgUser,chatId:number,historyId:string){
   await sendBookFormat(user,chatId,data.source as BookSource,data.book_id,data.format as BookFormat);
 }
 
-function uploadStatus(status:string){return status==="catalog"?"✅ No catálogo":status==="pending"?"⏳ Aguardando aprovação":"🔒 Privado";}
+function uploadStatus(status:string){return status==="catalog"?"✅ Disponível":status==="pending"?"🕘 Em análise":"🔒 Privado";}
 async function showUploads(user:TgUser,chatId:number){
   const access=await requireBotAccess(user,chatId);if(!access)return;const admin=createAdminSupabaseClient();
   const {data}=await admin.from("user_books").select("id,title,moderation_status,cover_url,mime_type,created_at").eq("user_id",access.userId).order("created_at",{ascending:false}).limit(12);
   if(!data?.length){await sendTelegramMessage(chatId,"📤 <b>Você ainda não enviou nenhum livro.</b>\n\nToque em ENVIAR para adicionar seu primeiro PDF ou EPUB.",telegramMainKeyboard());return;}
-  const rows=data.map(book=>[{text:`${book.moderation_status==="pending"?"⏳":book.moderation_status==="catalog"?"✅":"📚"} ${book.title}`.slice(0,58),callback_data:`upload:${book.id}`}]);rows.push([{text:"➕ Enviar novo livro",callback_data:"action_upload"}],[{text:"↩️ Voltar ao menu",callback_data:"show_menu"}]);
+  const rows=data.map(book=>[{text:`${book.moderation_status==="pending"?"🕘":book.moderation_status==="catalog"?"✅":"📚"} ${book.title}`.slice(0,58),callback_data:`upload:${book.id}`}]);rows.push([{text:"➕ Enviar novo livro",callback_data:"action_upload"}],[{text:"↩️ Voltar ao menu",callback_data:"show_menu"}]);
   await sendTelegramMessage(chatId,"📤 <b>Meus Envios</b>\n\nAqui ficam os livros enviados por você. Toque em um item para ver o status, trocar a capa ou editar as informações:",{inline_keyboard:rows});
 }
 
@@ -237,7 +237,7 @@ async function receiveCover(user:TgUser,chatId:number,fileId:string,fileName:str
   if(access.mode!=="upload_cover"&&access.mode!=="edit_cover"){await sendTelegramMessage(chatId,"🖼 Para trocar uma capa, abra <b>Meus Envios</b> e escolha o livro.",telegramMainKeyboard());return;}
   const bookId=access.context.bookId;if(!bookId){await setState(user.id,"idle",{});return;}
   if(!/^image\/(jpeg|png|webp|gif)$/i.test(mimeType)){await sendTelegramMessage(chatId,"Envie a capa como <b>foto, JPG, PNG ou WEBP</b>.");return;}
-  await sendTelegramMessage(chatId,"🖼 <b>Recebi a capa.</b> Estou salvando no Google Drive e atualizando o livro...");
+  await sendTelegramMessage(chatId,"🖼 <b>Recebi a capa.</b> Estou atualizando seu livro...");
   const {bytes}=await getTelegramFile(fileId);const arrayBuffer=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;const file=new File([arrayBuffer],fileName,{type:mimeType});
   const admin=createAdminSupabaseClient();const {data:before}=await admin.from("user_books").select("cover_url,drive_file_id,kindle_drive_file_id,moderation_status").eq("id",bookId).eq("user_id",access.userId).maybeSingle();if(!before)return;
   const uploaded=await uploadUserCoverToDrive(file,access.userId);const coverUrl=`/api/covers/${encodeURIComponent(uploaded.id)}`;
@@ -247,7 +247,7 @@ async function receiveCover(user:TgUser,chatId:number,fileId:string,fileName:str
   const oldCover=coverDriveId(before.cover_url);if(oldCover&&oldCover!==uploaded.id)try{await deleteDriveFile(oldCover);}catch{}
   await syncCatalogBook(access.userId,bookId,{cover_url:coverUrl,kindle_drive_file_id:null,kindle_file_name:null,kindle_generated_at:null});await setState(user.id,"idle",{});
   if(access.mode==="upload_cover"){
-    await sendTelegramMessage(chatId,"🎉 <b>Envio concluído!</b>\n\n✅ Arquivo salvo no Google Drive\n✅ Capa adicionada\n✅ Livro incluído em Minha Biblioteca\n⏳ Status: <b>aguardando aprovação do administrador</b>\n\nVocê pode acompanhar ou editar este livro em <b>Meus Envios</b>.",telegramMainKeyboard());
+    await sendTelegramMessage(chatId,"🎉 <b>Envio concluído!</b>\n\n✅ Arquivo recebido\n✅ Capa adicionada\n✅ Livro disponível em Minha Biblioteca\n🕘 Status: <b>Em análise</b>\n\nVocê pode acompanhar ou editar este livro em <b>Meus Envios</b>.",telegramMainKeyboard());
   }else{await sendTelegramMessage(chatId,"✅ <b>Capa atualizada com sucesso.</b>");await showUploadDetail(user,chatId,bookId);}
 }
 
@@ -258,11 +258,11 @@ async function receiveBook(user:TgUser,chatId:number,document:TgDocument){
   let fileName=(document.file_name||"").trim();const mime=(document.mime_type||"").toLowerCase();const isPdf=fileName.toLowerCase().endsWith(".pdf")||mime==="application/pdf";const isEpub=fileName.toLowerCase().endsWith(".epub")||mime==="application/epub+zip";
   if(!isPdf&&!isEpub){await sendTelegramMessage(chatId,"📄 Envie um arquivo em <b>PDF</b> ou <b>EPUB</b>. Outros formatos não são aceitos para livros.",telegramBackToMenuKeyboard());return;}
   if(!fileName)fileName=isPdf?"livro.pdf":"livro.epub";const mimeType=isPdf?"application/pdf":"application/epub+zip";
-  await sendTelegramMessage(chatId,"⏳ <b>Recebendo seu livro...</b>\n\nVou salvar o arquivo no Google Drive e identificar automaticamente os dados do livro.");
+  await sendTelegramMessage(chatId,"⏳ <b>Recebendo seu livro...</b>\n\nVou processar o arquivo e tentar identificar automaticamente os dados do livro.");
   const {bytes}=await getTelegramFile(document.file_id);const identified=await identifyBookFromUpload(fileName,mimeType,bytes);
   const {uploadUrl}=await createUserBookResumableUpload({userId:access.userId,fileName,mimeType,fileSize:bytes.byteLength});const arrayBuffer=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;
-  const driveResponse=await fetch(uploadUrl,{method:"PUT",headers:{"content-type":mimeType,"content-length":String(bytes.byteLength)},body:arrayBuffer});if(!driveResponse.ok){const text=await driveResponse.text();throw new Error(`Upload no Google Drive falhou (${driveResponse.status}): ${text.slice(0,160)}`);}
-  const uploaded=await driveResponse.json() as {id?:string;name?:string};if(!uploaded.id)throw new Error("Google Drive não retornou o ID do arquivo.");
+  const driveResponse=await fetch(uploadUrl,{method:"PUT",headers:{"content-type":mimeType,"content-length":String(bytes.byteLength)},body:arrayBuffer});if(!driveResponse.ok){const text=await driveResponse.text();throw new Error(`Upload interno falhou (${driveResponse.status}): ${text.slice(0,160)}`);}
+  const uploaded=await driveResponse.json() as {id?:string;name?:string};if(!uploaded.id)throw new Error("O armazenamento não retornou o ID do arquivo.");
   const admin=createAdminSupabaseClient();const {data:book,error}=await admin.from("user_books").insert({
     user_id:access.userId,title:identified.title,author:identified.author,description:identified.description,year:identified.year,pages:identified.pages,language:identified.language,drive_file_id:uploaded.id,file_name:uploaded.name||fileName,mime_type:mimeType,source:"upload",moderation_status:"pending",updated_at:new Date().toISOString()
   }).select("id,title,author").single();
@@ -277,7 +277,7 @@ export async function POST(request:NextRequest){
     const update=await request.json() as TgUpdate;
     if(update.callback_query){
       const q=update.callback_query;const chatId=q.message?.chat.id;if(!chatId){await answerTelegramCallback(q.id);return NextResponse.json({ok:true});}const data=q.data||"";
-      if(data==="subscription_paid"){await answerTelegramCallback(q.id,"Envie seu comprovante");await sendTelegramMessage(chatId,`✅ <b>Pagamento realizado?</b>\n\nEnvie o comprovante para <b>@${receiptUsername()}</b> e informe seu @ do Telegram.\n\nAssim que o pagamento for conferido, o administrador ativará seu acesso por <b>30 dias</b>.`);}
+      if(data==="subscription_paid"){await answerTelegramCallback(q.id,"Envie seu comprovante");await sendTelegramMessage(chatId,`✅ <b>Pagamento realizado?</b>\n\nEnvie o comprovante para <b>@${receiptUsername()}</b> e informe seu @ do Telegram.\n\nAssim que o pagamento for conferido, seu acesso será ativado por <b>30 dias</b>.`);}
       else if(data==="action_download"){await answerTelegramCallback(q.id);await promptDownload(q.from,chatId);}
       else if(data==="action_upload"){await answerTelegramCallback(q.id);await promptUpload(q.from,chatId);}
       else if(data==="show_menu"){await answerTelegramCallback(q.id);await showMenu(q.from,chatId);}
@@ -293,7 +293,7 @@ export async function POST(request:NextRequest){
       else if(data.startsWith("edityear:")){await answerTelegramCallback(q.id);await promptEdit(q.from,chatId,"edit_year",data.split(":")[1],"ano","Envie apenas o ano, por exemplo <b>2001</b>. Para remover, escreva <b>limpar</b>.");}
       else if(data.startsWith("editdescription:")){await answerTelegramCallback(q.id);await promptEdit(q.from,chatId,"edit_description",data.split(":")[1],"sinopse","Envie a nova sinopse em uma única mensagem.");}
       else if(data.startsWith("editcover:")){const bookId=data.split(":")[1];const access=await requireBotAccess(q.from,chatId);await answerTelegramCallback(q.id);if(access){await setState(q.from.id,"edit_cover",{bookId});await sendTelegramMessage(chatId,"🖼 <b>Trocar capa</b>\n\nEnvie agora a nova capa como foto, JPG, PNG ou WEBP.",{inline_keyboard:[[{text:"↩️ Cancelar",callback_data:`upload:${bookId}`}]]});}}
-      else if(data.startsWith("skipcover:")){const bookId=data.split(":")[1];const access=await requireBotAccess(q.from,chatId);await answerTelegramCallback(q.id);if(access&&access.context.bookId===bookId){await setState(q.from.id,"idle",{});await sendTelegramMessage(chatId,"✅ <b>Livro salvo sem capa por enquanto.</b>\n\nEle já aparece em Minha Biblioteca e está aguardando aprovação. Você pode adicionar a capa depois em <b>Meus Envios</b>.",telegramMainKeyboard());}}
+      else if(data.startsWith("skipcover:")){const bookId=data.split(":")[1];const access=await requireBotAccess(q.from,chatId);await answerTelegramCallback(q.id);if(access&&access.context.bookId===bookId){await setState(q.from.id,"idle",{});await sendTelegramMessage(chatId,"✅ <b>Livro salvo sem capa por enquanto.</b>\n\nEle já aparece em Minha Biblioteca. Você pode adicionar a capa depois em <b>Meus Envios</b>.",telegramMainKeyboard());}}
       else await answerTelegramCallback(q.id);
       return NextResponse.json({ok:true});
     }
