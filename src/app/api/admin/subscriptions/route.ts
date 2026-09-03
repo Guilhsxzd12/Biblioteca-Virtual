@@ -2,7 +2,7 @@ import { NextRequest,NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { activateSubscription,cancelSubscription } from "@/lib/subscription";
-import { sendTelegramMessage } from "@/lib/telegram";
+import { sendTelegramMessage,telegramMainKeyboard } from "@/lib/telegram";
 
 export async function GET(){
   try{
@@ -28,7 +28,7 @@ export async function PATCH(request:NextRequest){
     if(action==="activate"){
       const days=Math.max(1,Math.min(365,Number(body.days)||30));subscription=await activateSubscription(userId,days,viewer.user.id,`Pagamento confirmado manualmente (+${days} dias)`);
       const {data:tg}=await admin.from("telegram_accounts").select("chat_id").eq("user_id",userId).maybeSingle();
-      if(tg?.chat_id){const date=new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo"}).format(new Date(subscription.active_until));try{await sendTelegramMessage(tg.chat_id,`✅ <b>Pagamento confirmado!</b>\n\nSua assinatura da Biblioteca Virtual foi liberada até <b>${date}</b>.\n\nEnvie /status para ver seu acesso.`);}catch(error){console.warn("[subscription-admin] aviso Telegram falhou",error);}}
+      if(tg?.chat_id){const date=new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo"}).format(new Date(subscription.active_until));try{await sendTelegramMessage(tg.chat_id,`✅ <b>Pagamento confirmado!</b>\n\nSua assinatura da Biblioteca Virtual foi liberada até <b>${date}</b>.\n\nO que você deseja fazer?`,telegramMainKeyboard());}catch(error){console.warn("[subscription-admin] aviso Telegram falhou",error);}}
     }else if(action==="cancel"){
       subscription=await cancelSubscription(userId,viewer.user.id);
       const {data:tg}=await admin.from("telegram_accounts").select("chat_id").eq("user_id",userId).maybeSingle();
