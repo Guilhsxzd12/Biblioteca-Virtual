@@ -1,7 +1,7 @@
 import { NextRequest,NextResponse } from "next/server";
 import { getApiViewer } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { ensureUserBookFormats,hasPdfAndEpub } from "@/lib/book-formats";
+import { hasOriginalEpub,hasPdfAndEpub } from "@/lib/book-formats";
 import { deleteDriveFile } from "@/lib/google-drive";
 import { driveLetter,slugifyTitle } from "@/lib/slugify";
 
@@ -24,19 +24,51 @@ export async function PATCH(request:NextRequest){
   let item=found;
 
   if(status==="catalog"){
-    try{item=await ensureUserBookFormats(item.user_id,id);}catch(error){return NextResponse.json({error:error instanceof Error?`Não foi possível preparar o PDF de leitura: ${error.message}`:"Não foi possível preparar o PDF de leitura."},{status:400});}
-    if(!hasPdfAndEpub(item))return NextResponse.json({error:"O envio precisa ter um PDF de leitura e uma versão EPUB antes de entrar no catálogo."},{status:400});
+    const manualPdfId=String(body.readingPdfDriveFileId||"").trim();
+    const manualPdfName=String(body.readingPdfFileName||"").trim();
+    if(manualPdfId||manualPdfName){
+      if(!manualPdfId||!manualPdfName||!manualPdfName.toLowerCase().endsWith(".pdf"))return NextResponse.json({error:"O PDF manual informado é inválido."},{status:400});
+      const now=new Date().toISOString();
+      const {data:withPdf,error:pdfError}=await admin.from("user_books").update({reading_pdf_drive_file_id:manualPdfId,reading_pdf_file_name:manualPdfName,reading_pdf_generated_at:now,updated_at:now}).eq("id",id).select("*").single();
+      if(pdfError||!withPdf)return NextResponse.json({error:pdfError?.message||"Não foi possível vincular o PDF."},{status:400});
+      item=withPdf;
+    }
+
+    if(!hasOriginalEpub(item))return NextResponse.json({error:"O envio precisa ter um EPUB original."},{status:400});
+    if(!hasPdfAndEpub(item))return NextResponse.json({error:"Anexe manualmente o PDF de leitura antes de aprovar este livro."},{status:400});
+    if(!String(item.cover_url||"").trim())return NextResponse.json({error:"Adicione uma capa antes de aprovar este livro."},{status:400});
     if(!String(item.author||"").trim()||!String(item.description||"").trim())return NextResponse.json({error:"Autor e sinopse são obrigatórios antes de aprovar para o catálogo."},{status:400});
+
+    const bookPayload={
+      title:item.title,
+      author:item.author,
+      description:item.description,
+      language:item.language||null,
+      category_id:item.category_id||null,
+      year:item.year||null,
+      pages:item.pages||null,
+      cover_url:item.cover_url||null,
+      drive_file_id:item.drive_file_id,
+      drive_folder_letter:driveLetter(item.title),
+      file_name:item.file_name,
+      mime_type:"application/epub+zip",
+      reading_pdf_drive_file_id:item.reading_pdf_drive_file_id,
+      reading_pdf_file_name:item.reading_pdf_file_name,
+      reading_pdf_generated_at:item.reading_pdf_generated_at||new Date().toISOString(),
+      kindle_drive_file_id:item.kindle_drive_file_id||null,
+      kindle_file_name:item.kindle_file_name||null,
+      kindle_generated_at:item.kindle_generated_at||null,
+      allow_download:true,
+      published:true,
+      updated_at:new Date().toISOString()
+    };
     const {data:existing}=await admin.from("books").select("id").eq("drive_file_id",item.drive_file_id).maybeSingle();
-    if(!existing){
+    if(existing){
+      const {error:bookError}=await admin.from("books").update(bookPayload).eq("id",existing.id);
+      if(bookError)return NextResponse.json({error:bookError.message},{status:400});
+    }else{
       const slug=`${slugifyTitle(item.title).toLowerCase()}-${String(item.id).slice(0,8)}`;
-      const {error:bookError}=await admin.from("books").insert({
-        title:item.title,slug,author:item.author,description:item.description,language:item.language||null,category_id:item.category_id||null,year:item.year||null,pages:item.pages||null,cover_url:item.cover_url||null,
-        drive_file_id:item.drive_file_id,drive_folder_letter:driveLetter(item.title),file_name:item.file_name,mime_type:item.mime_type,
-        reading_pdf_drive_file_id:item.reading_pdf_drive_file_id||null,reading_pdf_file_name:item.reading_pdf_file_name||null,reading_pdf_generated_at:item.reading_pdf_generated_at||null,
-        kindle_drive_file_id:item.kindle_drive_file_id||null,kindle_file_name:item.kindle_file_name||null,kindle_generated_at:item.kindle_generated_at||null,
-        allow_download:true,published:true,updated_at:new Date().toISOString()
-      });
+      const {error:bookError}=await admin.from("books").insert({...bookPayload,slug});
       if(bookError)return NextResponse.json({error:bookError.message},{status:400});
     }
   }else{
