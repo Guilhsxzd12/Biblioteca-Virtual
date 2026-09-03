@@ -7,8 +7,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes:{
     "/api/admin/books":chromiumFiles,
     "/api/admin/user-books":chromiumFiles,
-    "/api/user-books":chromiumFiles,
-    "/api/chromium-health":chromiumFiles
+    "/api/user-books":chromiumFiles
   },
   images: {
     remotePatterns: [
