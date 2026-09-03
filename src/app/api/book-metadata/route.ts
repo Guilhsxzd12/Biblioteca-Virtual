@@ -35,6 +35,7 @@ function score(item:BookMetadataResult,query:string){
   if(item.year)s+=2;
   if(item.pages)s+=1;
   if(item.isEbook)s+=3;
+  if(item.categories?.length)s+=2;
   return s;
 }
 
@@ -75,7 +76,8 @@ async function googleBooks(query:string,{ebooks=false}:{ebooks?:boolean}={}){
       description:cleanText(i.description),
       coverUrl:(i.imageLinks?.extraLarge||i.imageLinks?.large||i.imageLinks?.medium||i.imageLinks?.thumbnail||i.imageLinks?.smallThumbnail||null)?.replace("http://","https://"),
       isbn,
-      isEbook
+      isEbook,
+      categories:Array.isArray(i.categories)?i.categories.slice(0,8):[]
     };
   });
 }
@@ -85,8 +87,8 @@ async function openLibrary(title:string,isbn:string|null){
   if(isbn)url.searchParams.set("isbn",isbn);
   else url.searchParams.set("q",title);
   url.searchParams.set("limit","25");
-  url.searchParams.set("fields","key,title,author_name,first_publish_year,cover_i,number_of_pages_median,isbn,ebook_access,public_scan_b");
-  const r=await fetch(url,{headers:{"User-Agent":"BibliotecaVirtual/1.1"},cache:"no-store"});
+  url.searchParams.set("fields","key,title,author_name,first_publish_year,cover_i,number_of_pages_median,isbn,ebook_access,public_scan_b,subject");
+  const r=await fetch(url,{headers:{"User-Agent":"BibliotecaVirtual/1.2"},cache:"no-store"});
   if(!r.ok)return [] as BookMetadataResult[];
   const p=await r.json();
   return (p.docs||[]).map((d:any):BookMetadataResult=>({
@@ -99,13 +101,14 @@ async function openLibrary(title:string,isbn:string|null){
     description:null,
     coverUrl:d.cover_i?`https://covers.openlibrary.org/b/id/${d.cover_i}-L.jpg`:null,
     isbn:d.isbn?.find((x:string)=>String(x).replace(/[^0-9X]/gi,"").length===13)||d.isbn?.[0]||null,
-    isEbook:Boolean(d.public_scan_b||d.ebook_access&&d.ebook_access!=="no_ebook")
+    isEbook:Boolean(d.public_scan_b||d.ebook_access&&d.ebook_access!=="no_ebook"),
+    categories:Array.isArray(d.subject)?d.subject.slice(0,12):[]
   }));
 }
 
 export async function GET(request:NextRequest){
   const viewer=await getApiViewer();
-  if(!viewer.user||viewer.profile?.role!=="admin")return NextResponse.json({error:"Acesso negado."},{status:403});
+  if(!viewer.user||!viewer.profile||(viewer.profile.role!=="admin"&&!viewer.profile.approved))return NextResponse.json({error:"Acesso negado."},{status:403});
 
   const title=request.nextUrl.searchParams.get("title")?.trim();
   if(!title||title.length<2)return NextResponse.json({results:[]});
