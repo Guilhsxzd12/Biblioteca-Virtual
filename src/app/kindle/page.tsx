@@ -9,5 +9,5 @@ export default async function KindlePage(){
     supabase.from("categories").select("*").order("name"),
     supabase.from("user_books").select("*,categories(name)").order("created_at",{ascending:false})
   ]);
-  return <AppShell><main className="container"><div className="page-head"><div><h1>Enviar ao Kindle</h1><p>Prepare seu EPUB, salve no Drive e envie pelo serviço oficial da Amazon.</p></div></div><KindleClient categories={(categories||[]) as Category[]} initialBooks={(books||[]) as UserBook[]}/></main></AppShell>;
+  return <AppShell><main className="container"><div className="page-head"><div><h1>Enviar ao Kindle</h1><p>Valide seu EPUB, salve uma cópia privada e compartilhe o arquivo diretamente com o app Kindle pelo menu do celular.</p></div></div><KindleClient categories={(categories||[]) as Category[]} initialBooks={(books||[]) as UserBook[]}/></main></AppShell>;
 }
