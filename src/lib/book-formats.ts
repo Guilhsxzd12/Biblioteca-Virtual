@@ -15,19 +15,21 @@ export async function ensureUserBookFormats(userId:string,bookId:string){
 
   const primaryName=String(item.file_name||"");const primaryMime=String(item.mime_type||"");
   if(isEpub(primaryName,primaryMime)){
+    if(item.reading_pdf_drive_file_id&&item.reading_pdf_file_name)return item;
     const originalEpubId=String(item.drive_file_id);const originalEpubName=primaryName||`${slugifyTitle(item.title)}.epub`;
     const epubResponse=await fetchDriveFile(originalEpubId);const epubBytes=new Uint8Array(await epubResponse.arrayBuffer());
     const generated=await buildPdfFromEpub(epubBytes,{title:item.title,author:item.author});
     const pdfName=`${slugifyTitle(item.title)}.pdf`;const uploaded=await uploadUserReadingPdf(userId,pdfName,generated.bytes);
+    const now=new Date().toISOString();
     const patch={
-      drive_file_id:uploaded.id,
-      file_name:pdfName,
-      mime_type:"application/pdf",
+      reading_pdf_drive_file_id:uploaded.id,
+      reading_pdf_file_name:pdfName,
+      reading_pdf_generated_at:now,
       kindle_drive_file_id:item.kindle_drive_file_id||originalEpubId,
       kindle_file_name:item.kindle_file_name||originalEpubName,
-      kindle_generated_at:item.kindle_generated_at||new Date().toISOString(),
-      pages:item.pages||generated.pages,
-      updated_at:new Date().toISOString()
+      kindle_generated_at:item.kindle_generated_at||now,
+      pages:generated.pages,
+      updated_at:now
     };
     const {data:updated,error:updateError}=await admin.from("user_books").update(patch).eq("id",bookId).eq("user_id",userId).select("*").single();
     if(updateError){try{await deleteDriveFile(uploaded.id);}catch{}throw new Error(updateError.message);}
@@ -44,6 +46,9 @@ export async function ensureUserBookFormats(userId:string,bookId:string){
   throw new Error("O livro precisa estar em PDF ou EPUB.");
 }
 
-export function hasPdfAndEpub(book:{file_name?:string|null;mime_type?:string|null;kindle_drive_file_id?:string|null;kindle_file_name?:string|null}){
-  return isPdf(String(book.file_name||""),String(book.mime_type||""))&&Boolean(book.kindle_drive_file_id&&book.kindle_file_name);
+export function hasPdfAndEpub(book:{file_name?:string|null;mime_type?:string|null;reading_pdf_drive_file_id?:string|null;reading_pdf_file_name?:string|null;kindle_drive_file_id?:string|null;kindle_file_name?:string|null}){
+  const primaryName=String(book.file_name||"");const primaryMime=String(book.mime_type||"");
+  const hasPdf=isPdf(primaryName,primaryMime)||Boolean(book.reading_pdf_drive_file_id&&book.reading_pdf_file_name);
+  const hasEpub=isEpub(primaryName,primaryMime)||Boolean(book.kindle_drive_file_id&&book.kindle_file_name);
+  return hasPdf&&hasEpub;
 }
