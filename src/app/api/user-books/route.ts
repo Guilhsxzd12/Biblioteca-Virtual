@@ -36,7 +36,7 @@ export async function POST(request:NextRequest){
   const {data,error}=await v.supabase.from("user_books").insert(payload).select("*,categories(name)").single();
   if(error)return NextResponse.json({error:error.message},{status:400});
   let formatWarning:string|null=null;
-  try{await ensureUserBookFormats(v.user.id,data.id);}catch(e){formatWarning=e instanceof Error?e.message:"Não foi possível preparar os dois formatos automaticamente.";}
+  try{await ensureUserBookFormats(v.user.id,data.id);}catch(e){formatWarning=e instanceof Error?e.message:"Não foi possível preparar a versão de leitura automaticamente.";}
   const {data:book}=await v.supabase.from("user_books").select("*,categories(name)").eq("id",data.id).single();
   return NextResponse.json({book:book||data,formatWarning});
 }

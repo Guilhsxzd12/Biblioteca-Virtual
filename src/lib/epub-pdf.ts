@@ -1,7 +1,15 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
+import { mkdir,rm,writeFile } from "node:fs/promises";
+import { dirname,isAbsolute,relative,resolve } from "node:path";
+import { fileURLToPath,pathToFileURL } from "node:url";
+import chromium from "@sparticuz/chromium";
 import JSZip from "jszip";
+import { PDFDocument } from "pdf-lib";
+import puppeteer from "puppeteer-core";
 
 type PdfMeta={title:string;author?:string|null};
+type ManifestItem={href:string;mediaType:string};
 
 function decodeEntities(value:string){
   return value
@@ -16,42 +24,45 @@ function decodeEntities(value:string){
     .replace(/&gt;/gi,">");
 }
 
-function textFromHtml(html:string){
-  return decodeEntities(
-    html
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi," ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi," ")
-      .replace(/<(?:br|hr)\b[^>]*\/?\s*>/gi,"\n")
-      .replace(/<\/(?:p|div|section|article|h[1-6]|li|blockquote|tr)>/gi,"\n")
-      .replace(/<li\b[^>]*>/gi,"• ")
-      .replace(/<[^>]+>/g," ")
-  )
-    .replace(/\r/g,"")
-    .replace(/[ \t]+/g," ")
-    .replace(/ *\n */g,"\n")
-    .replace(/\n{3,}/g,"\n\n")
-    .trim();
-}
-
-function dirname(path:string){const i=path.lastIndexOf("/");return i>=0?path.slice(0,i+1):"";}
-function normalizePath(path:string){
+function normalizeArchivePath(value:string){
+  let decoded=value.replace(/\\/g,"/").replace(/^\/+/,"");
+  try{decoded=decodeURIComponent(decoded);}catch{}
   const parts:string[]=[];
-  for(const part of path.split("/")){
+  for(const part of decoded.split("/")){
     if(!part||part===".")continue;
-    if(part==="..")parts.pop();else parts.push(part);
+    if(part===".."){parts.pop();continue;}
+    parts.push(part);
   }
   return parts.join("/");
 }
 
-async function extractEpubText(bytes:Uint8Array){
-  const zip=await JSZip.loadAsync(bytes);
+function withinRoot(root:string,target:string){
+  const rel=relative(root,target);
+  return rel===""||(!rel.startsWith("..")&&!isAbsolute(rel));
+}
+
+async function writeEpubToTemp(zip:JSZip,root:string){
+  for(const [rawName,entry] of Object.entries(zip.files)){
+    const safeName=normalizeArchivePath(rawName);
+    if(!safeName)continue;
+    const target=resolve(root,safeName);
+    if(!withinRoot(root,target))throw new Error("EPUB contém um caminho de arquivo inválido.");
+    if(entry.dir){await mkdir(target,{recursive:true});continue;}
+    await mkdir(dirname(target),{recursive:true});
+    const bytes=await entry.async("uint8array");
+    await writeFile(target,bytes);
+  }
+}
+
+async function epubSpineFiles(zip:JSZip){
   const container=await zip.file("META-INF/container.xml")?.async("text");
-  const opfPath=container?.match(/full-path=["']([^"']+)["']/i)?.[1];
-  if(!opfPath)throw new Error("EPUB inválido: pacote principal não encontrado.");
+  const opfRaw=container?.match(/full-path=["']([^"']+)["']/i)?.[1];
+  if(!opfRaw)throw new Error("EPUB inválido: pacote principal não encontrado.");
+  const opfPath=normalizeArchivePath(decodeEntities(opfRaw));
   const opf=await zip.file(opfPath)?.async("text");
   if(!opf)throw new Error("EPUB inválido: metadados não encontrados.");
-  const base=dirname(opfPath);
-  const manifest=new Map<string,{href:string;mediaType:string}>();
+  const base=dirname(opfPath).replace(/\\/g,"/");
+  const manifest=new Map<string,ManifestItem>();
   for(const match of opf.matchAll(/<item\b([^>]+)>/gi)){
     const attrs=match[1];
     const id=attrs.match(/\bid=["']([^"']+)["']/i)?.[1];
@@ -64,71 +75,86 @@ async function extractEpubText(bytes:Uint8Array){
   for(const id of spine){
     const item=manifest.get(id);if(!item)continue;
     if(!/xhtml|html|xml/i.test(item.mediaType)&&!/\.(xhtml?|html?)$/i.test(item.href))continue;
-    files.push(normalizePath(base+item.href));
+    const file=normalizeArchivePath(`${base}${item.href}`);
+    if(file&&zip.file(file))files.push(file);
   }
   if(!files.length){
-    for(const name of Object.keys(zip.files).sort())if(/\.(xhtml?|html?)$/i.test(name)&&!/nav|toc|cover/i.test(name))files.push(name);
+    for(const name of Object.keys(zip.files).sort()){
+      const safe=normalizeArchivePath(name);
+      if(/\.(xhtml?|html?)$/i.test(safe)&&!/\b(nav|toc)\b/i.test(safe)&&zip.file(name))files.push(safe);
+    }
   }
-  const chapters:string[]=[];
-  for(const name of files){const file=zip.file(name);if(!file)continue;const text=textFromHtml(await file.async("text"));if(text)chapters.push(text);}
-  const text=chapters.join("\n\n").trim();
-  if(text.length<250)throw new Error("Não encontrei texto suficiente no EPUB para criar o PDF de leitura.");
-  return text;
+  if(!files.length)throw new Error("EPUB inválido: nenhum capítulo de leitura foi encontrado.");
+  return [...new Set(files)];
 }
 
-const winAnsiExtras:Record<number,number>={
-  0x20ac:0x80,0x201a:0x82,0x0192:0x83,0x201e:0x84,0x2026:0x85,0x2020:0x86,0x2021:0x87,0x02c6:0x88,0x2030:0x89,0x0160:0x8a,0x2039:0x8b,0x0152:0x8c,0x017d:0x8e,
-  0x2018:0x91,0x2019:0x92,0x201c:0x93,0x201d:0x94,0x2022:0x95,0x2013:0x96,0x2014:0x97,0x02dc:0x98,0x2122:0x99,0x0161:0x9a,0x203a:0x9b,0x0153:0x9c,0x017e:0x9e,0x0178:0x9f
-};
-function toWinAnsi(value:string){
-  let out="";
-  for(const char of value){const cp=char.codePointAt(0)||32;if(cp>=32&&cp<=255)out+=String.fromCharCode(cp);else if(winAnsiExtras[cp])out+=String.fromCharCode(winAnsiExtras[cp]);else out+="?";}
-  return out;
-}
-function pdfEscape(value:string){return toWinAnsi(value).replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)").replace(/[\r\n]+/g," ");}
-
-function wrapParagraph(text:string,max=86){
-  const words=text.split(/\s+/).filter(Boolean);const lines:string[]=[];let line="";
-  for(const word of words){
-    if(word.length>max){if(line){lines.push(line);line="";}for(let i=0;i<word.length;i+=max)lines.push(word.slice(i,i+max));continue;}
-    if(!line)line=word;else if(line.length+1+word.length<=max)line+=` ${word}`;else{lines.push(line);line=word;}
-  }
-  if(line)lines.push(line);return lines;
-}
-
-function paginate(text:string,meta:PdfMeta){
-  const lines:string[]=[meta.title.trim(),meta.author?.trim()?`Autor: ${meta.author.trim()}`:"",""];
-  for(const paragraph of text.split(/\n+/)){
-    const p=paragraph.trim();if(!p){if(lines.at(-1)!=="")lines.push("");continue;}
-    lines.push(...wrapParagraph(p),"");
-  }
-  const perPage=47;const pages:string[][]=[];
-  for(let i=0;i<lines.length;i+=perPage)pages.push(lines.slice(i,i+perPage));
-  return pages.length?pages:[[meta.title]];
-}
-
-function buildPdf(pages:string[][]){
-  const objects=new Map<number,Buffer>();const pageIds=pages.map((_,i)=>4+i*2);
-  objects.set(1,Buffer.from("<< /Type /Catalog /Pages 2 0 R >>","latin1"));
-  objects.set(2,Buffer.from(`<< /Type /Pages /Kids [${pageIds.map(id=>`${id} 0 R`).join(" ")}] /Count ${pages.length} >>`,"latin1"));
-  objects.set(3,Buffer.from("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>","latin1"));
-  pages.forEach((lines,index)=>{
-    const pageId=4+index*2,contentId=pageId+1;
-    objects.set(pageId,Buffer.from(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`,"latin1"));
-    const commands=["BT","/F1 11 Tf","15 TL","54 788 Td",...lines.flatMap(line=>[`(${pdfEscape(line)}) Tj`,"T*"]),"ET"].join("\n");
-    const stream=Buffer.from(commands,"latin1");
-    objects.set(contentId,Buffer.concat([Buffer.from(`<< /Length ${stream.length} >>\nstream\n`,"latin1"),stream,Buffer.from("\nendstream","latin1")]));
+async function launchBrowser(){
+  chromium.setGraphicsMode=false;
+  const args=await puppeteer.defaultArgs({args:[...chromium.args,"--allow-file-access-from-files"],headless:"shell"});
+  return puppeteer.launch({
+    args,
+    executablePath:await chromium.executablePath(),
+    headless:"shell",
+    defaultViewport:{width:1200,height:1600,deviceScaleFactor:1,hasTouch:false,isLandscape:false,isMobile:false}
   });
-  const maxId=Math.max(...objects.keys());const parts:Buffer[]=[Buffer.from("%PDF-1.4\n%âãÏÓ\n","latin1")];const offsets=new Array<number>(maxId+1).fill(0);let offset=parts[0].length;
-  for(let id=1;id<=maxId;id++){
-    const body=objects.get(id);if(!body)continue;offsets[id]=offset;const obj=Buffer.concat([Buffer.from(`${id} 0 obj\n`,`latin1`),body,Buffer.from("\nendobj\n","latin1")]);parts.push(obj);offset+=obj.length;
-  }
-  const xrefOffset=offset;let xref=`xref\n0 ${maxId+1}\n0000000000 65535 f \n`;
-  for(let id=1;id<=maxId;id++)xref+=`${String(offsets[id]).padStart(10,"0")} 00000 n \n`;
-  const trailer=`trailer\n<< /Size ${maxId+1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
-  parts.push(Buffer.from(xref+trailer,"latin1"));return new Uint8Array(Buffer.concat(parts));
 }
 
 export async function buildPdfFromEpub(epubBytes:Uint8Array,meta:PdfMeta){
-  const text=await extractEpubText(epubBytes);const pages=paginate(text,meta);return {bytes:buildPdf(pages),pages:pages.length};
+  const zip=await JSZip.loadAsync(epubBytes);
+  const spine=await epubSpineFiles(zip);
+  const root=resolve("/tmp",`biblioteca-epub-${randomUUID()}`);
+  await mkdir(root,{recursive:true});
+  await writeEpubToTemp(zip,root);
+
+  const merged=await PDFDocument.create();
+  if(meta.title.trim())merged.setTitle(meta.title.trim());
+  if(meta.author?.trim())merged.setAuthor(meta.author.trim());
+  merged.setCreator("Biblioteca Virtual");
+
+  let browser:Awaited<ReturnType<typeof launchBrowser>>|null=null;
+  let pages=0;
+  try{
+    browser=await launchBrowser();
+    const page=await browser.newPage();
+    await page.setJavaScriptEnabled(false);
+    await page.setRequestInterception(true);
+    page.on("request",request=>{
+      const url=request.url();
+      if(url==="about:blank"||url.startsWith("data:")||url.startsWith("blob:")){void request.continue();return;}
+      if(url.startsWith("file:")){
+        try{
+          const filePath=fileURLToPath(new URL(url));
+          if(withinRoot(root,filePath)){void request.continue();return;}
+        }catch{}
+      }
+      void request.abort();
+    });
+    await page.emulateMediaType("print");
+
+    for(const chapter of spine){
+      const chapterPath=resolve(root,chapter);
+      if(!withinRoot(root,chapterPath))continue;
+      const response=await page.goto(pathToFileURL(chapterPath).href,{waitUntil:"load",timeout:20000});
+      if(!response&&!(await page.content()).trim())continue;
+      await page.addStyleTag({content:"@media print{html,body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}"});
+      await page.evaluate(async()=>{const fonts=(document as Document&{fonts?:FontFaceSet}).fonts;if(fonts)await fonts.ready;});
+      const chapterPdf=await page.pdf({
+        format:"A4",
+        preferCSSPageSize:true,
+        printBackground:true,
+        displayHeaderFooter:false,
+        margin:{top:"0",right:"0",bottom:"0",left:"0"}
+      });
+      const source=await PDFDocument.load(chapterPdf);
+      const copied=await merged.copyPages(source,source.getPageIndices());
+      for(const copiedPage of copied)merged.addPage(copiedPage);
+      pages+=copied.length;
+    }
+
+    if(!pages)throw new Error("Não foi possível renderizar páginas do EPUB.");
+    return {bytes:await merged.save({useObjectStreams:true}),pages};
+  }finally{
+    if(browser)try{await browser.close();}catch{}
+    await rm(root,{recursive:true,force:true}).catch(()=>{});
+  }
 }

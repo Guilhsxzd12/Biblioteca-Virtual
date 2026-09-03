@@ -3,6 +3,7 @@ import { randomUUID,timingSafeEqual } from "crypto";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { getSubscriptionState,type SubscriptionState } from "@/lib/subscription";
 import { identifyBookFromUpload } from "@/lib/book-identification";
+import { ensureUserBookFormats } from "@/lib/book-formats";
 import { ensureKindleVersion } from "@/lib/kindle-service";
 import {
   TELEGRAM_MAX_INCOMING_BYTES,
@@ -40,6 +41,9 @@ function formatDate(value?:string|null){if(!value)return "—";return new Intl.D
 function sourceChar(source:BookSource){return source==="catalog"?"c":"u";}
 function sourceFromChar(value:string):BookSource|null{return value==="c"?"catalog":value==="u"?"user":null;}
 function coverDriveId(url?:string|null){const m=String(url||"").match(/^\/api\/covers\/([^/?#]+)/);return m?.[1]?decodeURIComponent(m[1]):null;}
+function bookIsPdf(book:any){return book?.mime_type==="application/pdf"||String(book?.file_name||"").toLowerCase().endsWith(".pdf");}
+function bookIsEpub(book:any){return book?.mime_type==="application/epub+zip"||String(book?.file_name||"").toLowerCase().endsWith(".epub");}
+function bookHasReadingPdf(book:any){return bookIsPdf(book)||Boolean(book?.reading_pdf_drive_file_id);}
 
 async function sendLink(user:TgUser,chatId:number){
   const admin=createAdminSupabaseClient();
@@ -89,7 +93,7 @@ async function showSubscription(user:TgUser,chatId:number){
   if(state.isAdmin){await sendTelegramMessage(chatId,"💳 <b>Minha assinatura</b>\n\n🛡 Sua conta é de <b>administrador</b>.\nVocê tem acesso permanente aos recursos da Biblioteca Virtual e não possui vencimento de assinatura.",telegramMainKeyboard());return;}
   const sub=state.subscription;
   if(state.approved&&sub?.isActive){
-    await sendTelegramMessage(chatId,`💳 <b>Minha assinatura</b>\n\n✅ <b>Status:</b> Ativa\n📅 <b>Início:</b> ${formatDate(sub.activatedAt)}\n⏳ <b>Vencimento:</b> ${formatDate(sub.activeUntil)}\n🗓 <b>Período:</b> 30 dias\n\nDurante esse período você pode baixar livros, gerar EPUB para Kindle e enviar seus próprios arquivos pelo bot.`,telegramMainKeyboard());return;
+    await sendTelegramMessage(chatId,`💳 <b>Minha assinatura</b>\n\n✅ <b>Status:</b> Ativa\n📅 <b>Início:</b> ${formatDate(sub.activatedAt)}\n⏳ <b>Vencimento:</b> ${formatDate(sub.activeUntil)}\n🗓 <b>Período:</b> 30 dias\n\nDurante esse período você pode baixar livros, usar as versões para Kindle e enviar seus próprios arquivos pelo bot.`,telegramMainKeyboard());return;
   }
   await sendTelegramMessage(chatId,paymentMessage(),paymentKeyboard());
 }
@@ -114,37 +118,59 @@ async function loadBookForAccess(access:Access,source:BookSource,id:string){
   const {data}=await admin.from("books").select("*").eq("id",id).eq("published",true).eq("allow_download",true).maybeSingle();return data;
 }
 
+async function ensureReadingPdf(access:Access,source:BookSource,id:string,book:any){
+  if(bookHasReadingPdf(book))return book;
+  if(source!=="user"||!bookIsEpub(book))return book;
+  try{
+    await sendTelegramMessage(access.userId?Number.NaN:0,"");
+  }catch{}
+  await ensureUserBookFormats(access.userId,id);
+  return loadBookForAccess(access,source,id);
+}
+
 async function showFormatOptions(user:TgUser,chatId:number,source:BookSource,id:string){
   const access=await requireBotAccess(user,chatId);if(!access)return;
-  const book=await loadBookForAccess(access,source,id);if(!book){await sendTelegramMessage(chatId,"🔒 Esse livro não está disponível para download pela sua conta.",telegramMainKeyboard());return;}
-  const isPdf=book.mime_type==="application/pdf"||String(book.file_name).toLowerCase().endsWith(".pdf");
-  const isEpub=book.mime_type==="application/epub+zip"||String(book.file_name).toLowerCase().endsWith(".epub");
+  let book=await loadBookForAccess(access,source,id);if(!book){await sendTelegramMessage(chatId,"🔒 Esse livro não está disponível para download pela sua conta.",telegramMainKeyboard());return;}
+  if(source==="user"&&bookIsEpub(book)&&!bookHasReadingPdf(book)){
+    try{book=await ensureUserBookFormats(access.userId,id);}catch{}
+  }
+  const hasPdf=bookHasReadingPdf(book);const hasEpub=bookIsEpub(book)||Boolean(book.kindle_drive_file_id);
   const s=sourceChar(source);const rows:Array<Array<Record<string,string>>> = [];
-  if(isPdf)rows.push([{text:"📄 BAIXAR PDF",callback_data:`format:${s}:${id}:pdf`},{text:"📱 BAIXAR EPUB (KINDLE)",callback_data:`format:${s}:${id}:epub`}]);
-  else if(isEpub)rows.push([{text:"📱 BAIXAR EPUB (KINDLE)",callback_data:`format:${s}:${id}:epub`}]);
+  if(hasPdf&&hasEpub)rows.push([{text:"📄 BAIXAR PDF",callback_data:`format:${s}:${id}:pdf`},{text:"📱 BAIXAR EPUB (KINDLE)",callback_data:`format:${s}:${id}:epub`}]);
+  else if(hasPdf)rows.push([{text:"📄 BAIXAR PDF",callback_data:`format:${s}:${id}:pdf`}]);
+  else if(hasEpub)rows.push([{text:"📱 BAIXAR EPUB (KINDLE)",callback_data:`format:${s}:${id}:epub`}]);
   rows.push([{text:"↩️ Voltar ao menu",callback_data:"show_menu"}]);
   await setState(user.id,"idle",{});
-  await sendTelegramMessage(chatId,`📖 <b>${escapeHtml(book.title)}</b>\n${book.author?`👤 ${escapeHtml(book.author)}\n`:""}\nComo você quer receber este livro?${!isPdf&&isEpub?"\n\nℹ️ Este envio está disponível originalmente em EPUB.":""}`,{inline_keyboard:rows});
+  await sendTelegramMessage(chatId,`📖 <b>${escapeHtml(book.title)}</b>\n${book.author?`👤 ${escapeHtml(book.author)}\n`:""}\nComo você quer receber este livro?`,{inline_keyboard:rows});
 }
 
 async function sendBookFormat(user:TgUser,chatId:number,source:BookSource,id:string,format:BookFormat){
   const access=await requireBotAccess(user,chatId);if(!access)return;
-  const book=await loadBookForAccess(access,source,id);if(!book){await sendTelegramMessage(chatId,"🔒 Esse livro não está mais disponível para download.",telegramMainKeyboard());return;}
+  let book=await loadBookForAccess(access,source,id);if(!book){await sendTelegramMessage(chatId,"🔒 Esse livro não está mais disponível para download.",telegramMainKeyboard());return;}
   let driveFileId=String(book.drive_file_id);let fileName=String(book.file_name);let mimeType=String(book.mime_type||"application/octet-stream");
   if(format==="pdf"){
-    const isPdf=mimeType==="application/pdf"||fileName.toLowerCase().endsWith(".pdf");
-    if(!isPdf){await sendTelegramMessage(chatId,"📄 Este livro não possui uma versão PDF disponível. Você pode recebê-lo em EPUB.",{inline_keyboard:[[{text:"📱 BAIXAR EPUB",callback_data:`format:${sourceChar(source)}:${id}:epub`}],[{text:"↩️ Menu",callback_data:"show_menu"}]]});return;}
+    if(!bookHasReadingPdf(book)&&source==="user"&&bookIsEpub(book)){
+      try{
+        await sendTelegramMessage(chatId,`📄 <b>Preparando a versão de leitura de ${escapeHtml(book.title)}...</b>\n\nIsso pode levar alguns segundos na primeira vez.`);
+        book=await ensureUserBookFormats(access.userId,id);
+      }catch(error){await sendTelegramMessage(chatId,`⚠️ <b>Não consegui preparar o PDF de leitura.</b>\n\n${escapeHtml(error instanceof Error?error.message:"A conversão não pôde ser concluída.")}`,telegramMainKeyboard());return;}
+    }
+    if(bookIsPdf(book)){
+      driveFileId=String(book.drive_file_id);fileName=String(book.file_name);mimeType="application/pdf";
+    }else if(book.reading_pdf_drive_file_id){
+      driveFileId=String(book.reading_pdf_drive_file_id);fileName=String(book.reading_pdf_file_name||`${book.title}.pdf`);mimeType="application/pdf";
+    }else{await sendTelegramMessage(chatId,"📄 Este livro ainda não possui uma versão PDF de leitura disponível.",telegramMainKeyboard());return;}
   }else{
     try{
-      await sendTelegramMessage(chatId,`📱 <b>Preparando a versão EPUB de ${escapeHtml(book.title)}...</b>\n\nSe ela ainda não existir, eu vou gerar a versão otimizada para Kindle. Isso pode levar alguns segundos.`);
+      await sendTelegramMessage(chatId,`📱 <b>Preparando o EPUB de ${escapeHtml(book.title)}...</b>\n\nIsso pode levar alguns segundos na primeira vez.`);
       const ensured=await ensureKindleVersion(createAdminSupabaseClient(),access.userId,source,id);driveFileId=ensured.driveFileId;fileName=ensured.fileName;mimeType="application/epub+zip";
-    }catch(error){await sendTelegramMessage(chatId,`⚠️ <b>Não consegui preparar o EPUB.</b>\n\n${escapeHtml(error instanceof Error?error.message:"A conversão não pôde ser concluída.")}\n\nSe houver PDF disponível, você ainda pode baixá-lo.`,{inline_keyboard:[[{text:"📄 TENTAR PDF",callback_data:`format:${sourceChar(source)}:${id}:pdf`}],[{text:"↩️ Menu",callback_data:"show_menu"}]]});return;}
+    }catch(error){await sendTelegramMessage(chatId,`⚠️ <b>Não consegui preparar o EPUB.</b>\n\n${escapeHtml(error instanceof Error?error.message:"A conversão não pôde ser concluída.")}`,telegramMainKeyboard());return;}
   }
   await sendTelegramMessage(chatId,`⏳ <b>Preparando seu arquivo...</b>\n${escapeHtml(book.title)}`);
   const response=await fetchDriveFile(driveFileId);const declaredSize=Number(response.headers.get("content-length")||0);
   if(declaredSize>TELEGRAM_MAX_OUTGOING_BYTES){await sendTelegramMessage(chatId,"⚠️ Esse arquivo ultrapassa o tamanho que o bot consegue enviar pelo Telegram. Ele continua disponível pelo site.",telegramMainKeyboard());return;}
   const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.byteLength>TELEGRAM_MAX_OUTGOING_BYTES){await sendTelegramMessage(chatId,"⚠️ Esse arquivo ultrapassa o tamanho que o bot consegue enviar pelo Telegram. Ele continua disponível pelo site.",telegramMainKeyboard());return;}
-  await sendTelegramDocument(chatId,fileName,mimeType,bytes,`📚 <b>${escapeHtml(book.title)}</b>\n${format==="epub"?"📱 EPUB • pronto para Kindle":"📄 PDF"}`);
+  await sendTelegramDocument(chatId,fileName,mimeType,bytes,`📚 <b>${escapeHtml(book.title)}</b>\n${format==="epub"?"📱 EPUB • pronto para Kindle":"📄 PDF • versão de leitura"}`);
   const admin=createAdminSupabaseClient();await admin.from("telegram_download_history").insert({user_id:access.userId,source,book_id:id,title_snapshot:book.title,format,requested_at:new Date().toISOString()});
   await setState(user.id,"idle",{});
   await sendTelegramMessage(chatId,"✅ <b>Pronto! Livro enviado.</b>\n\nEle também foi salvo no seu Histórico, então você consegue pedir o mesmo arquivo novamente sem precisar pesquisar de novo.",telegramMainKeyboard());
