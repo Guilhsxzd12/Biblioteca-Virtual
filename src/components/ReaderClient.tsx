@@ -37,12 +37,12 @@ export function ReaderClient({bookId,title,totalPages,initialPage}:{bookId:strin
       try{
         const response=await fetch(`/api/books/${bookId}/file`,{cache:"no-store"});
         if(!response.ok){
-          const data=await response.json().catch(()=>null);
-          throw new Error(data?.error||"Não foi possível carregar este livro.");
+          const payload=await response.json().catch(()=>null);
+          throw new Error(payload?.error||"Não foi possível carregar este livro.");
         }
         const bytes=new Uint8Array(await response.arrayBuffer());
         const pdfjs:any=await import("pdfjs-dist/webpack.mjs");
-        loadingTask=pdfjs.getDocument({data,useSystemFonts:true});
+        loadingTask=pdfjs.getDocument({data:bytes,useSystemFonts:true});
         const document:PdfDocument=await loadingTask.promise;
         if(disposed){await document.destroy?.();return;}
         setPdf(document);
