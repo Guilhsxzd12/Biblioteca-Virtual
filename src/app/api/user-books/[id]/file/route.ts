@@ -1,6 +1,5 @@
 import { NextRequest,NextResponse } from "next/server";
 import { getApiViewer } from "@/lib/auth";
-import { ensureUserBookFormats } from "@/lib/book-formats";
 import { fetchDriveFile } from "@/lib/google-drive";
 
 function safeName(v:string){return v.replace(/[\r\n"\\/]/g,"-");}
@@ -10,23 +9,16 @@ export async function GET(request:NextRequest,{params}:{params:Promise<{id:strin
   const v=await getApiViewer();
   if(!v.user||!v.profile||(v.profile.role!=="admin"&&!v.profile.approved))return NextResponse.json({error:"Acesso negado."},{status:403});
   const {id}=await params;
-  let {data,error}=await v.supabase.from("user_books").select("drive_file_id,file_name,mime_type,reading_pdf_drive_file_id,reading_pdf_file_name").eq("id",id).maybeSingle();
+  const {data,error}=await v.supabase.from("user_books").select("drive_file_id,file_name,mime_type,reading_pdf_drive_file_id,reading_pdf_file_name").eq("id",id).maybeSingle();
   if(error||!data)return NextResponse.json({error:"Arquivo não encontrado."},{status:404});
 
   const wantsInline=request.nextUrl.searchParams.get("inline")==="1";
-  if(wantsInline&&!isPdf(String(data.file_name),String(data.mime_type))&&!data.reading_pdf_drive_file_id){
-    try{
-      await ensureUserBookFormats(v.user.id,id);
-      const refreshed=await v.supabase.from("user_books").select("drive_file_id,file_name,mime_type,reading_pdf_drive_file_id,reading_pdf_file_name").eq("id",id).maybeSingle();
-      if(refreshed.data)data=refreshed.data;
-    }catch(e){return NextResponse.json({error:e instanceof Error?e.message:"Não foi possível preparar a versão de leitura."},{status:502});}
-  }
-
   let fileId=String(data.drive_file_id);
   let fileName=String(data.file_name);
   let mimeType=String(data.mime_type||"application/octet-stream");
+
   if(wantsInline&&!isPdf(fileName,mimeType)){
-    if(!data.reading_pdf_drive_file_id)return NextResponse.json({error:"A versão de leitura ainda não está pronta."},{status:409});
+    if(!data.reading_pdf_drive_file_id)return NextResponse.json({error:"A versão PDF de leitura ainda não está disponível."},{status:409});
     fileId=String(data.reading_pdf_drive_file_id);
     fileName=String(data.reading_pdf_file_name||fileName.replace(/\.epub$/i,".pdf"));
     mimeType="application/pdf";
