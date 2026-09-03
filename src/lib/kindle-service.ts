@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { buildEpubFromPdf,replaceEpubCover } from "@/lib/kindle-epub";
+import { replaceEpubCover } from "@/lib/kindle-epub";
 import { fetchDriveFile,uploadCatalogKindleEpub,uploadUserKindleEpub } from "@/lib/google-drive";
 import { driveLetter,slugifyTitle } from "@/lib/slugify";
 
@@ -28,26 +28,19 @@ export async function ensureKindleVersion(supabase:SupabaseClient,userId:string,
   const item=await loadKindleSource(supabase,source,id);
   if(item.kindle_drive_file_id&&item.kindle_file_name)return {item,driveFileId:item.kindle_drive_file_id,fileName:item.kindle_file_name,generated:false};
 
-  const isPdf=item.mime_type==="application/pdf"||item.file_name.toLowerCase().endsWith(".pdf");
   const isEpub=item.mime_type==="application/epub+zip"||item.file_name.toLowerCase().endsWith(".epub");
-  const admin=createAdminSupabaseClient();
+  if(!isEpub)throw new Error("Este livro precisa ter um EPUB original para ser enviado ao Kindle.");
+  if(!item.cover_url)throw new Error("Adicione uma capa ao livro antes de enviar ao Kindle.");
 
-  if(isEpub){
-    const patch={kindle_drive_file_id:item.drive_file_id,kindle_file_name:item.file_name,kindle_generated_at:new Date().toISOString()};
-    await admin.from(source==="user"?"user_books":"books").update(patch).eq("id",item.id);
-    return {item:{...item,...patch},driveFileId:item.drive_file_id,fileName:item.file_name,generated:false};
-  }
-  if(!isPdf)throw new Error("A versão Kindle só pode ser gerada a partir de PDF ou EPUB.");
-  if(!item.cover_url)throw new Error("Adicione uma capa ao livro antes de gerar a versão Kindle.");
-
-  const pdfResponse=await fetchDriveFile(item.drive_file_id);
-  const pdfBytes=new Uint8Array(await pdfResponse.arrayBuffer());
-  const generated=await buildEpubFromPdf(pdfBytes,{title:item.title,author:item.author,language:item.language,coverUrl:item.cover_url});
+  const epubResponse=await fetchDriveFile(item.drive_file_id);
+  const epubBytes=new Uint8Array(await epubResponse.arrayBuffer());
+  const coveredBytes=await replaceEpubCover(epubBytes,item.cover_url);
   const fileName=`${slugifyTitle(item.title)}-Kindle.epub`;
   const uploaded=source==="user"
-    ?await uploadUserKindleEpub(userId,fileName,generated.bytes)
-    :await uploadCatalogKindleEpub((item.drive_folder_letter||driveLetter(item.title)).toUpperCase(),fileName,generated.bytes);
-  const patch={kindle_drive_file_id:uploaded.id,kindle_file_name:fileName,kindle_generated_at:new Date().toISOString(),...(item.pages?{}:{pages:generated.pages})};
+    ?await uploadUserKindleEpub(userId,fileName,coveredBytes)
+    :await uploadCatalogKindleEpub((item.drive_folder_letter||driveLetter(item.title)).toUpperCase(),fileName,coveredBytes);
+  const patch={kindle_drive_file_id:uploaded.id,kindle_file_name:fileName,kindle_generated_at:new Date().toISOString()};
+  const admin=createAdminSupabaseClient();
   const {error}=await admin.from(source==="user"?"user_books":"books").update(patch).eq("id",item.id);
   if(error)throw new Error(`Não foi possível registrar a versão Kindle: ${error.message}`);
   return {item:{...item,...patch},driveFileId:uploaded.id,fileName,generated:true};

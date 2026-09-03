@@ -9,13 +9,15 @@ export async function POST(request:NextRequest){
   const b=await request.json();
   const title=String(b.title||"").trim();
   const original=String(b.originalFileName||"livro.epub");
-  const mime=String(b.mimeType||"application/epub+zip");
+  const mime=String(b.mimeType||"application/epub+zip").toLowerCase();
   const size=Number(b.fileSize||0);
+  const isEpub=mime==="application/epub+zip"||original.toLowerCase().endsWith(".epub");
   if(!title||!size)return NextResponse.json({error:"Título e arquivo são obrigatórios."},{status:400});
+  if(!isEpub)return NextResponse.json({error:"Envie o arquivo original em EPUB."},{status:400});
   if(size>200*1024*1024)return NextResponse.json({error:"O arquivo ultrapassa 200 MB, que é o limite do Send to Kindle."},{status:400});
   const fileName=driveFileName(title,original);
   try{
-    const {uploadUrl}=await createUserBookResumableUpload({userId:v.user.id,fileName,mimeType:mime,fileSize:size});
+    const {uploadUrl}=await createUserBookResumableUpload({userId:v.user.id,fileName,mimeType:"application/epub+zip",fileSize:size});
     return NextResponse.json({uploadUrl,fileName});
   }catch(e){
     if(e instanceof Error&&e.message==="GOOGLE_DRIVE_NOT_CONNECTED")return NextResponse.json({error:"Google Drive ainda não conectado."},{status:409});
