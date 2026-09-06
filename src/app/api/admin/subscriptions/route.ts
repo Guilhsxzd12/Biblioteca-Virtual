@@ -11,7 +11,7 @@ export async function GET(){
   try{
     await requireAdmin();const admin=createAdminSupabaseClient();
     const [{data:profiles,error:profilesError},{data:subscriptions,error:subsError},{data:telegram,error:telegramError}]=await Promise.all([
-      admin.from("profiles").select("id,email,full_name,role,approved,created_at").order("created_at",{ascending:false}),
+      admin.from("profiles").select("id,email,full_name,username,role,approved,created_at").order("created_at",{ascending:false}),
       admin.from("subscriptions").select("user_id,status,active_until,activated_at,note,updated_at"),
       admin.from("telegram_accounts").select("user_id,telegram_user_id,username,first_name,linked_at")
     ]);
@@ -27,10 +27,10 @@ export async function PATCH(request:NextRequest){
     const viewer=await requireAdmin();const body=await request.json();const userId=String(body.userId||"").trim();const action=String(body.action||"");
     if(!userId)return NextResponse.json({error:"Usuário obrigatório."},{status:400});
     const admin=createAdminSupabaseClient();let subscription;
-    if(action==="activate"){
-      subscription=await activateSubscription(userId,viewer.user.id,"Pagamento confirmado manualmente — 30 dias");
+    if(action==="activate"||action==="renew"){
+      subscription=await activateSubscription(userId,viewer.user.id,"Assinatura liberada/renovada manualmente — +30 dias");
       const {data:tg}=await admin.from("telegram_accounts").select("chat_id").eq("user_id",userId).maybeSingle();
-      if(tg?.chat_id)try{await sendTelegramMessage(tg.chat_id,`🎉 <b>Pagamento confirmado!</b>\n\nSua assinatura da ${SITE_NAME} está ativa.\n\n📅 <b>Início:</b> ${date(subscription.activated_at)}\n⏳ <b>Vencimento:</b> ${date(subscription.active_until)}\n🗓 <b>Período:</b> 30 dias\n\nSeu acesso aos downloads e pedidos pelo bot já está liberado.`,telegramMainKeyboard());}catch(error){console.warn("[subscription-admin] aviso Telegram falhou",error);}
+      if(tg?.chat_id)try{await sendTelegramMessage(tg.chat_id,`🎉 <b>Assinatura renovada!</b>\n\nForam acrescentados <b>30 dias</b> ao seu acesso da ${SITE_NAME}.\n\n⏳ <b>Novo vencimento:</b> ${date(subscription.active_until)}\n\nSeu acesso aos downloads e pedidos pelo bot está liberado.`,telegramMainKeyboard());}catch(error){console.warn("[subscription-admin] aviso Telegram falhou",error);}
     }else if(action==="cancel"){
       subscription=await cancelSubscription(userId,viewer.user.id);
       const {data:tg}=await admin.from("telegram_accounts").select("chat_id").eq("user_id",userId).maybeSingle();
