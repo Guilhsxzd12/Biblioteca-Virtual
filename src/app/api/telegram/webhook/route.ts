@@ -12,11 +12,11 @@ import {
 } from "@/lib/telegram";
 
 type TgUser={id:number;username?:string;first_name?:string};
-type TgChat={id:number;type?:string;title?:string};
-type TgMessage={chat:TgChat;from?:TgUser;text?:string;document?:unknown;photo?:unknown[]};
+type TgChat={id:number;type?:string;title?:string;username?:string};
+type TgMessage={chat:TgChat;from?:TgUser;text?:string;document?:unknown;photo?:unknown[];forward_origin?:{type?:string;chat?:TgChat};forward_from_chat?:TgChat};
 type TgCallback={id:string;from:TgUser;data?:string;message?:{message_id:number;chat:{id:number}}};
 type TgMemberUpdate={chat:TgChat;new_chat_member?:{status?:string;user?:TgUser};old_chat_member?:{status?:string;user?:TgUser}};
-type TgUpdate={message?:TgMessage;channel_post?:TgMessage;callback_query?:TgCallback;my_chat_member?:TgMemberUpdate};
+type TgUpdate={message?:TgMessage;channel_post?:TgMessage;edited_channel_post?:TgMessage;callback_query?:TgCallback;my_chat_member?:TgMemberUpdate};
 type BotMode="idle"|"download"|"request_title"|"request_author"|"request_language";
 type BotContext={title?:string;author?:string};
 type LinkedState={userId:string;isAdmin:boolean;approved:boolean;mode:BotMode;context:BotContext;subscription:SubscriptionState|null};
@@ -29,6 +29,7 @@ function normalized(value:string){return value.normalize("NFD").replace(/[\u0300
 function formatDate(value?:string|null){if(!value)return "—";return new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo",day:"2-digit",month:"2-digit",year:"numeric"}).format(new Date(value));}
 function isPdf(book:any){return book?.mime_type==="application/pdf"||String(book?.file_name||"").toLowerCase().endsWith(".pdf");}
 function isEpub(book:any){return book?.mime_type==="application/epub+zip"||String(book?.file_name||"").toLowerCase().endsWith(".epub");}
+function isPublicationChat(chat?:TgChat|null){return Boolean(chat&&(chat.type==="channel"||chat.type==="supergroup"));}
 
 async function render(chatId:number,text:string,replyMarkup?:Record<string,unknown>,messageId?:number){
   if(messageId){try{return await editTelegramMessage(chatId,messageId,text,replyMarkup);}catch(error){console.warn("[telegram] edit failed, sending new message",error instanceof Error?error.message:"unknown");}}
@@ -97,13 +98,14 @@ export async function POST(request:NextRequest){
   try{
     if(!validSecret(request.headers.get("x-telegram-bot-api-secret-token")))return NextResponse.json({ok:false},{status:401});
     const update=await request.json() as TgUpdate;
-    if(update.my_chat_member?.chat.type==="channel"){
-      const status=update.my_chat_member.new_chat_member?.status;
-      if(!status||["administrator","member"].includes(status))await registerTelegramChannel(update.my_chat_member.chat);
+    if(isPublicationChat(update.my_chat_member?.chat)){
+      const status=update.my_chat_member?.new_chat_member?.status;
+      if(!status||["administrator","member"].includes(status)){const registered=await registerTelegramChannel(update.my_chat_member!.chat);console.info("[telegram-channel] membership detected",{chatId:registered?.chat_id,role:registered?.role});}
       return NextResponse.json({ok:true});
     }
-    if(update.channel_post?.chat.type==="channel"){
-      await registerTelegramChannel(update.channel_post.chat);
+    const channelPost=update.channel_post||update.edited_channel_post;
+    if(isPublicationChat(channelPost?.chat)){
+      const registered=await registerTelegramChannel(channelPost!.chat);console.info("[telegram-channel] post detected",{chatId:registered?.chat_id,role:registered?.role});
       return NextResponse.json({ok:true});
     }
     if(update.callback_query){
@@ -123,13 +125,25 @@ export async function POST(request:NextRequest){
       else if(data.startsWith("format:")){const [,id,format]=data.split(":");if(format==="pdf"||format==="epub")await sendBook(query.from,chatId,id,format,messageId);}
       return NextResponse.json({ok:true});
     }
-    const message=update.message;const user=message?.from;const chatId=message?.chat.id;if(!message||!user||!chatId)return NextResponse.json({ok:true});if(message.chat.type&&message.chat.type!=="private"){return NextResponse.json({ok:true});}
+    const message=update.message;const user=message?.from;const chatId=message?.chat.id;if(!message||!user||!chatId)return NextResponse.json({ok:true});if(message.chat.type&&message.chat.type!=="private")return NextResponse.json({ok:true});
+
+    const forwarded=message.forward_origin?.type==="channel"?message.forward_origin.chat:message.forward_from_chat;
+    if(isPublicationChat(forwarded)){
+      const state=await getLinkedState(user,chatId);
+      if(!state?.isAdmin){await sendTelegramMessage(chatId,"Somente o administrador pode cadastrar canais de publicação.");return NextResponse.json({ok:true});}
+      try{
+        const registered=await registerTelegramChannel(forwarded!);
+        await sendTelegramMessage(chatId,`✅ <b>Canal reconhecido!</b>\n\n${escapeHtml(registered.title||String(registered.chat_id))}\nFunção: <b>${registered.role==="official"?"Oficial":"Reserva"}</b>\n\nEle já pode receber livros publicados pelo painel.`,telegramMainKeyboard());
+      }catch(error){await sendTelegramMessage(chatId,`⚠️ ${escapeHtml(error instanceof Error?error.message:"Não foi possível registrar o canal.")}`,telegramMainKeyboard());}
+      return NextResponse.json({ok:true});
+    }
+
     const raw=(message.text||"").trim();const lower=raw.toLowerCase();if(lower.startsWith("/sair")){await logout(user,chatId);return NextResponse.json({ok:true});}if(await handleLoginText(user,chatId,raw))return NextResponse.json({ok:true});if(lower.startsWith("/start")||lower.startsWith("/menu")){if(lower.startsWith("/start"))try{await setupTelegramWebhook();}catch(error){console.warn("[telegram-webhook] command sync failed",error instanceof Error?error.message:"unknown");}const linked=await getLinkedState(user,chatId);if(linked)await showMenu(user,chatId);else await showWelcome(chatId);return NextResponse.json({ok:true});}if(lower.startsWith("/baixar")){await promptDownload(user,chatId);return NextResponse.json({ok:true});}if(lower.startsWith("/pedir")){await beginRequest(user,chatId);return NextResponse.json({ok:true});}if(lower.startsWith("/historico")){await showHistory(user,chatId);return NextResponse.json({ok:true});}if(lower.startsWith("/assinatura")){await showSubscription(user,chatId);return NextResponse.json({ok:true});}
     const access=await requireAccess(user,chatId);if(!access)return NextResponse.json({ok:true});if(message.document||message.photo){await sendTelegramMessage(chatId,"Este bot não recebe arquivos. Use <b>Baixar livro</b> ou <b>Pedir livro</b>.",telegramMainKeyboard());return NextResponse.json({ok:true});}if(access.mode==="download"&&raw)await searchBooks(user,chatId,raw);else if(["request_title","request_author","request_language"].includes(access.mode)&&raw)await handleRequest(user,chatId,access,raw);else await showMenu(user,chatId);return NextResponse.json({ok:true});
   }catch(error){console.error("[telegram-webhook]",error instanceof Error?error.message:"unknown");return NextResponse.json({ok:true});}
 }
 
 export async function GET(){
-  try{const result=await setupTelegramWebhook();return NextResponse.json({ok:true,service:"kindle-books-telegram",webhook:result.url,bot:result.bot});}
+  try{const result=await setupTelegramWebhook();return NextResponse.json({ok:true,service:"kindle-books-telegram",...result});}
   catch(error){return NextResponse.json({ok:false,service:"kindle-books-telegram",error:error instanceof Error?error.message:"Não foi possível sincronizar o webhook."},{status:500});}
 }
