@@ -22,10 +22,9 @@
 .spotlight-card{
   display:grid;
   grid-template-columns:minmax(150px,220px) minmax(0,1fr);
-  gap:34px;
+  gap:30px;
   align-items:center;
-  padding:32px;
-  min-height:390px;
+  padding:28px;
   border:1px solid #8E4864;
   border-radius:26px;
   background:linear-gradient(105deg,#4D0830 0%,#551839 100%);
@@ -39,8 +38,8 @@
 .spotlight-copy h2{margin:8px 0 7px;font:700 clamp(30px,4.5vw,50px)/.98 Georgia,serif;color:#FEF4E0}
 .spotlight-copy .spotlight-meta{margin:0 0 22px;color:#D2BAB4;font-size:14px;font-weight:700}
 .spotlight-copy>strong{display:block;margin-bottom:6px;font-size:14px}
-.spotlight-copy>p:not(.spotlight-meta){max-width:760px;margin:0;color:#F1DDD5;font-size:15px;line-height:1.68}
-.spotlight-link{display:inline-flex;align-items:center;justify-content:center;min-height:42px;margin-top:20px;padding:9px 20px;border-radius:999px;background:#FEF4E0;color:#4D0830;font-size:12px;font-weight:900}
+.spotlight-copy>p:not(.spotlight-meta){max-width:670px;margin:0;color:#F1DDD5;font-size:15px;line-height:1.65}
+.spotlight-link{display:inline-flex;align-items:center;justify-content:center;min-width:138px;min-height:42px;margin-top:20px;padding:9px 24px;border-radius:999px;background:#FEF4E0;color:#4D0830;font-size:12px;font-weight:900}
 .spotlight-link:hover{background:#FFF9ED;transform:translateY(-1px)}
 .metric-section{margin-bottom:66px}
 
@@ -59,6 +58,13 @@
   cursor:pointer;
 }
 .back-eyebrow:hover{color:#8E4864!important;text-decoration:underline;text-underline-offset:4px}
+
+/* Pagination */
+.catalog-pagination{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:9px;margin:38px 0 10px}
+.pagination-page,.pagination-arrow{display:grid;place-items:center;width:42px;height:42px;border:1px solid #D9C2BA;border-radius:50%;background:#FFFDF9;color:#4D0830;font-size:12px;font-weight:900;transition:.18s ease}
+.pagination-page:hover,.pagination-arrow:hover{border-color:#8E4864;background:#F6E6DF;transform:translateY(-1px)}
+.pagination-page.active{border-color:#4D0830;background:#4D0830;color:#FEF4E0;box-shadow:0 8px 20px rgba(77,8,48,.18)}
+.pagination-ellipsis{display:grid;place-items:center;min-width:24px;height:42px;color:#8E6B79;font-weight:800}
 
 /* Admin shortcuts and library search */
 .admin-page{min-width:0;max-width:100%;overflow-x:hidden}
@@ -112,21 +118,14 @@
 }
 
 @media(max-width:620px){
-  .spotlight-section{margin-inline:-6px}
-  .spotlight-card{
-    width:calc(100% + 12px);
-    grid-template-columns:31% minmax(0,1fr);
-    gap:17px;
-    min-height:350px;
-    padding:20px;
-    border-radius:22px;
-  }
+  .spotlight-section{margin-inline:0}
+  .spotlight-card{width:100%;grid-template-columns:34% minmax(0,1fr);gap:15px;padding:17px;border-radius:20px}
   .spotlight-cover{border-radius:10px}
   .spotlight-copy h2{margin-top:5px;font-size:clamp(21px,6vw,29px);line-height:1.02}
   .spotlight-copy .spotlight-meta{margin-bottom:12px;font-size:11px;line-height:1.35}
   .spotlight-copy>strong{font-size:12px}
-  .spotlight-copy>p:not(.spotlight-meta){display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:5;font-size:11.5px;line-height:1.5}
-  .spotlight-link{min-height:36px;margin-top:14px;padding:8px 16px;font-size:10px}
+  .spotlight-copy>p:not(.spotlight-meta){display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:4;font-size:11.5px;line-height:1.45}
+  .spotlight-link{min-width:124px;min-height:36px;margin-top:12px;padding:8px 18px;font-size:10px}
 
   .admin-page .page-head h1{font-size:clamp(40px,13vw,58px)!important;overflow-wrap:anywhere}
   .admin-book{grid-template-columns:52px minmax(0,1fr)!important;align-items:start!important;gap:11px!important;padding:15px 0!important}
@@ -137,19 +136,15 @@
   .admin-book small{white-space:normal!important;line-height:1.35}
   .admin-book-search{align-items:stretch}
   .admin-book-search input{height:42px}
+  .catalog-pagination{gap:7px;margin-top:30px}.pagination-page,.pagination-arrow{width:38px;height:38px;font-size:11px}.pagination-ellipsis{height:38px}
 }
 
 @media(max-width:420px){
   .book-slider{grid-auto-columns:minmax(142px,47vw)!important}
-  .spotlight-section{margin-inline:-5px}
-  .spotlight-card{
-    width:calc(100% + 10px);
-    grid-template-columns:30% minmax(0,1fr);
-    gap:13px;
-    min-height:340px;
-    padding:17px;
-  }
-  .spotlight-copy>p:not(.spotlight-meta){-webkit-line-clamp:5}
+  .spotlight-section{margin-inline:0}
+  .spotlight-card{width:100%;grid-template-columns:36% minmax(0,1fr);gap:12px;padding:14px}
+  .spotlight-copy>p:not(.spotlight-meta){-webkit-line-clamp:3}
+  .spotlight-link{min-width:118px;padding-inline:16px}
   .admin-book-search{display:grid;grid-template-columns:1fr}
   .admin-book-search .btn{justify-self:start}
 }
