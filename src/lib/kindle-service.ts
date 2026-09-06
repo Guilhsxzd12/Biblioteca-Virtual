@@ -69,8 +69,9 @@ export async function prepareKindleBytes(supabase:SupabaseClient,userId:string,s
   const selected=coverUrl?.trim()||null;
   if(selected){
     const item=await loadKindleSource(supabase,source,id);
-    if(!isEpub(item))throw new Error("Este livro precisa ter um EPUB original para ser enviado ao Kindle.");
-    const response=await fetchDriveFile(item.drive_file_id);
+    const baseDriveId=item.kindle_drive_file_id||(isEpub(item)?item.drive_file_id:null);
+    if(!baseDriveId)throw new Error("Este livro precisa ter um EPUB original para ser enviado ao Kindle.");
+    const response=await fetchDriveFile(baseDriveId);
     const originalBytes=new Uint8Array(await response.arrayBuffer());
     const bytes=await replaceEpubCover(originalBytes,selected);
     return {bytes,fileName:`${slugifyTitle(item.title)}-Kindle.epub`,title:item.title};
