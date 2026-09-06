@@ -18,7 +18,7 @@ async function telegramApi<T>(method:string,body:Record<string,unknown>={}){
 }
 
 export async function sendTelegramMessage(chatId:number|string,text:string,replyMarkup?:Record<string,unknown>){
-  return telegramApi("sendMessage",{chat_id:chatId,text,parse_mode:"HTML",disable_web_page_preview:true,...(replyMarkup?{reply_markup:replyMarkup}:{})});
+  return telegramApi<{message_id:number}>("sendMessage",{chat_id:chatId,text,parse_mode:"HTML",disable_web_page_preview:true,...(replyMarkup?{reply_markup:replyMarkup}:{})});
 }
 
 export async function editTelegramMessage(chatId:number|string,messageId:number,text:string,replyMarkup?:Record<string,unknown>){
@@ -36,9 +36,17 @@ export async function sendTelegramDocument(chatId:number|string,fileName:string,
   form.set("document",new Blob([arrayBuffer],{type:mimeType||"application/octet-stream"}),fileName||"livro");
   if(caption){form.set("caption",caption);form.set("parse_mode","HTML");}
   const response=await fetch(`https://api.telegram.org/bot${token()}/sendDocument`,{method:"POST",body:form,cache:"no-store"});
-  const data=await response.json() as {ok:boolean;result?:unknown;description?:string};
+  const data=await response.json() as {ok:boolean;result?:{message_id:number;document?:{file_id?:string}};description?:string};
   if(!response.ok||!data.ok)throw new Error(data.description||"Telegram sendDocument falhou.");
   return data.result;
+}
+
+export async function sendTelegramDocumentByFileId(chatId:number|string,fileId:string,caption?:string){
+  return telegramApi<{message_id:number;document?:{file_id?:string}}>("sendDocument",{chat_id:chatId,document:fileId,...(caption?{caption,parse_mode:"HTML"}:{})});
+}
+
+export async function getTelegramChat(chatId:number|string){
+  return telegramApi<{id:number;type:string;title?:string;username?:string;invite_link?:string}>("getChat",{chat_id:chatId});
 }
 
 export async function getTelegramFile(fileId:string){
@@ -57,7 +65,7 @@ export async function getTelegramBot(){return telegramApi<{id:number;username?:s
 
 export async function setupTelegramWebhook(){
   const url=`${PUBLIC_SITE_URL}/api/telegram/webhook`;
-  await telegramApi("setWebhook",{url,secret_token:telegramWebhookSecret(),allowed_updates:["message","callback_query"],drop_pending_updates:false});
+  await telegramApi("setWebhook",{url,secret_token:telegramWebhookSecret(),allowed_updates:["message","callback_query","channel_post","my_chat_member"],drop_pending_updates:false});
   await telegramApi("setMyCommands",{commands:[
     {command:"start",description:`Abrir a ${SITE_NAME}`},
     {command:"menu",description:"Abrir o menu principal"},
