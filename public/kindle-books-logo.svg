@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120" role="img" aria-labelledby="title desc">
+  <title id="title">KINDLE BOOKS</title><desc id="desc">Símbolo de livro aberto com monograma K e nome Kindle Books</desc>
+  <g transform="translate(8 10)">
+    <rect x="0" y="0" width="100" height="100" rx="24" fill="#8f3f2e"/>
+    <path d="M20 28c15-7 29-5 39 4v46c-10-9-24-11-39-4V28Z" fill="#fffdf8"/>
+    <path d="M80 28c-15-7-29-5-39 4v46c10-9 24-11 39-4V28Z" fill="#f4e9df"/>
+    <path d="M41 32v46" stroke="#8f3f2e" stroke-width="3"/>
+    <path d="M52 38v33M52 55l18-18M52 55l19 18" stroke="#304b3d" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="132" y="56" font-family="Georgia, 'Times New Roman', serif" font-size="42" font-weight="700" fill="#241c18" letter-spacing="1">KINDLE</text>
+  <text x="132" y="93" font-family="Arial, Helvetica, sans-serif" font-size="27" font-weight="800" fill="#8f3f2e" letter-spacing="7">BOOKS</text>
+</svg>
