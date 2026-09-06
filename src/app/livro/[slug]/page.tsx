@@ -14,7 +14,7 @@ import type { Book } from "@/lib/types";
 function isPdf(book:Book){return book.mime_type==="application/pdf"||book.file_name.toLowerCase().endsWith(".pdf");}
 function isEpub(book:Book){return book.mime_type==="application/epub+zip"||book.file_name.toLowerCase().endsWith(".epub");}
 function languageName(code:string){return ({pt:"Português",en:"Inglês",es:"Espanhol",fr:"Francês",it:"Italiano",de:"Alemão",ja:"Japonês",zh:"Chinês"} as Record<string,string>)[code]||code.toUpperCase();}
-function languageOptions(rows:{language:string;format:string}[],format:"pdf"|"epub",fallback?:string|null):DownloadLanguage[]{const set=new Set(rows.filter(r=>r.format===format).map(r=>r.language.toLowerCase()));if(!set.size&&fallback)set.add(fallback.toLowerCase());return [...set].map(code=>({code,label:languageName(code)})).sort((a,b)=>a.label.localeCompare(b.label,"pt-BR"));}
+function languageOptions(rows:{language:string;format:string}[],format:"pdf"|"epub",fallback?:string|null):DownloadLanguage[]{const set=new Set(rows.filter(r=>r.format===format).map(r=>r.language.toLowerCase()));if(fallback)set.add(fallback.toLowerCase());return [...set].map(code=>({code,label:languageName(code)})).sort((a,b)=>a.label.localeCompare(b.label,"pt-BR"));}
 
 export async function generateMetadata({params}:{params:Promise<{slug:string}>}):Promise<Metadata>{const {slug}=await params;return {title:slug.split("-").map(word=>word.charAt(0).toUpperCase()+word.slice(1)).join(" ")};}
 
