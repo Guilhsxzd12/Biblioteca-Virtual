@@ -5,6 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { KindleShareButton } from "@/components/KindleShareButton";
 import { BookCard } from "@/components/BookCard";
+import { HorizontalBookSlider } from "@/components/HorizontalBookSlider";
 import { requireApproved } from "@/lib/auth";
 import type { Book } from "@/lib/types";
 
@@ -45,6 +46,6 @@ export default async function BookPage({params}:{params:Promise<{slug:string}>})
       {!hasPdf&&!hasEpub&&<div className="notice">Este título está temporariamente sem arquivo disponível.</div>}
       <div className="synopsis-block"><span className="eyebrow">SOBRE O LIVRO</span><div className="prose">{b.description||"Sinopse não informada."}</div></div></div>
   </section>
-  {related.length>0&&<section className="related-section"><div className="section-heading"><div><span className="eyebrow">VOCÊ TAMBÉM PODE GOSTAR</span><h2>Livros relacionados</h2><p>Do mesmo autor ou da mesma categoria.</p></div></div><div className="book-slider">{related.map(item=><BookCard key={item.id} book={item}/>)}</div></section>}
+  {related.length>0&&<section className="related-section"><div className="section-heading"><div><span className="eyebrow">VOCÊ TAMBÉM PODE GOSTAR</span><h2>Livros relacionados</h2><p>Arraste para o lado para ver títulos do mesmo autor ou categoria.</p></div></div><HorizontalBookSlider>{related.map(item=><BookCard key={item.id} book={item}/>)}</HorizontalBookSlider></section>}
   </main></AppShell>;
 }
