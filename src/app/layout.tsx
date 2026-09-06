@@ -2,6 +2,7 @@ import type { Metadata,Viewport } from "next";
 import "./globals.css";
 import "./responsive.css";
 import "./kindle-books.css";
+import "./final-overrides.css";
 import { SITE_NAME,SITE_TAGLINE } from "@/lib/site";
 
 export const metadata:Metadata={title:{default:SITE_NAME,template:`%s | ${SITE_NAME}`},description:SITE_TAGLINE};
