@@ -5,6 +5,7 @@ import { SITE_NAME } from "@/lib/site";
 
 export const TELEGRAM_MAX_INCOMING_BYTES=20*1024*1024;
 export const TELEGRAM_MAX_OUTGOING_BYTES=50*1024*1024;
+export const PUBLIC_SITE_URL="https://estantevirtual.shop";
 
 function token(){const value=process.env.TELEGRAM_BOT_TOKEN?.trim();if(!value)throw new Error("TELEGRAM_BOT_TOKEN não configurado.");return value;}
 export function telegramWebhookSecret(){return createHash("sha256").update(`${token()}|${getSiteOrigin()}`).digest("hex");}
@@ -18,6 +19,14 @@ async function telegramApi<T>(method:string,body:Record<string,unknown>={}){
 
 export async function sendTelegramMessage(chatId:number|string,text:string,replyMarkup?:Record<string,unknown>){
   return telegramApi("sendMessage",{chat_id:chatId,text,parse_mode:"HTML",disable_web_page_preview:true,...(replyMarkup?{reply_markup:replyMarkup}:{})});
+}
+
+export async function editTelegramMessage(chatId:number|string,messageId:number,text:string,replyMarkup?:Record<string,unknown>){
+  try{return await telegramApi("editMessageText",{chat_id:chatId,message_id:messageId,text,parse_mode:"HTML",disable_web_page_preview:true,...(replyMarkup?{reply_markup:replyMarkup}:{})});}
+  catch(error){
+    if(error instanceof Error&&/message is not modified/i.test(error.message))return null;
+    throw error;
+  }
 }
 
 export async function sendTelegramDocument(chatId:number|string,fileName:string,mimeType:string,bytes:Uint8Array,caption?:string){
@@ -66,7 +75,7 @@ export function telegramMainKeyboard(){
     [{text:"🔎 BAIXAR LIVRO",callback_data:"action_download"},{text:"📝 PEDIR LIVRO",callback_data:"action_request"}],
     [{text:"🕘 HISTÓRICO",callback_data:"show_history"}],
     [{text:"💳 MINHA ASSINATURA",callback_data:"show_subscription"}],
-    [{text:"🌐 ABRIR ESTANTE",url:`${getSiteOrigin()}/biblioteca`}],
+    [{text:"🌐 ABRIR KINDLE BOOKS",url:`${PUBLIC_SITE_URL}/biblioteca`}],
     [{text:"🚪 SAIR / TROCAR CONTA",callback_data:"action_logout"}]
   ]};
 }
