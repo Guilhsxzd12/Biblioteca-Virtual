@@ -1,13 +1,16 @@
+import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 
 const faqs=[
-  {q:"Como baixo um livro?",a:"Abra o título desejado e escolha Baixar PDF ou Baixar EPUB. O arquivo vai para o seu aparelho e você poderá abri-lo no aplicativo de leitura que preferir."},
-  {q:"Qual é a diferença entre PDF e EPUB?",a:"O PDF mantém a diagramação fixa da página. O EPUB adapta o texto à tela e costuma funcionar melhor em aplicativos e leitores digitais."},
-  {q:"O site abre EPUB?",a:"Não. Para evitar incompatibilidades entre aparelhos, a Estante Virtual entrega o arquivo original. Você escolhe seu aplicativo preferido para a leitura."},
-  {q:"Como faço um pedido?",a:"Abra o bot do Telegram, toque em Pedir livro e informe título, autor e idioma. O pedido aparecerá para o administrador."},
-  {q:"Como saberei que meu pedido chegou?",a:"Quando o administrador publicar o livro pedido, o bot enviará automaticamente uma mensagem com o link direto do título."},
+  {q:"Como baixo um livro?",a:"Abra o título desejado e escolha o formato. O PDF é baixado diretamente. No EPUB, você pode escolher uma capa alternativa ou enviar uma imagem do seu dispositivo antes de baixar ou compartilhar com o Kindle."},
+  {q:"Qual é a diferença entre PDF e EPUB?",a:"O PDF mantém a página com diagramação fixa. O EPUB adapta o texto à tela e é o formato mais indicado para Kindle e outros leitores digitais."},
+  {q:"Consigo ler o livro dentro do site?",a:"Não. A KINDLE BOOKS funciona como acervo para download. Depois de baixar, abra o arquivo em um aplicativo de leitura, como Kindle, Google Play Livros, Apple Books ou Calibre."},
+  {q:"Como envio um EPUB para o Kindle?",a:"Na página do livro, escolha Baixar EPUB / Kindle. Você poderá selecionar uma das capas disponíveis ou enviar outra capa. O site incorpora essa imagem ao EPUB e depois oferece o download ou o compartilhamento com o app Kindle."},
+  {q:"Posso enviar um livro para entrar no acervo?",a:"Não. Somente o administrador adiciona e publica os arquivos. Caso queira um título específico, faça um pedido pelo formulário do site ou pelo bot do Telegram."},
+  {q:"Como faço um pedido de livro?",a:"Use a aba Pedir livro no site e informe título, autor e idioma. Se preferir, faça o mesmo pelo bot do Telegram. Os dois caminhos chegam à mesma fila de pedidos do administrador."},
+  {q:"Como saberei que um pedido foi atendido?",a:"Assim que o livro estiver no acervo, ele ficará disponível no site. Pedidos vinculados ao Telegram também podem receber uma mensagem automática do bot com o link do título."},
   {q:"Posso usar minha conta em outro Telegram?",a:"Sim, mas primeiro use Sair / Trocar conta no chat atualmente vinculado. Uma conta pode permanecer ligada a somente um Telegram por vez."},
   {q:"Minha assinatura venceu. O que faço?",a:"Consulte Minha assinatura no bot, faça a renovação e envie o comprovante ao atendimento. O administrador liberará o novo período."}
 ];
 
-export default function HelpPage(){return <AppShell><main className="container help-page"><div className="page-head"><div><span className="eyebrow">CENTRAL DE AJUDA</span><h1>Como podemos ajudar?</h1><p>Respostas rápidas sobre downloads, pedidos, assinatura e Telegram.</p></div></div><section className="faq-list">{faqs.map((item,index)=><details className="card faq-item" key={item.q} open={index===0}><summary>{item.q}<span>+</span></summary><div className="faq-answer">{item.a}</div></details>)}</section></main></AppShell>;}
+export default function HelpPage(){return <AppShell><main className="container help-page"><div className="page-head"><div><span className="eyebrow">CENTRAL DE AJUDA</span><h1>Como podemos ajudar?</h1><p>Respostas sobre downloads, Kindle, pedidos, assinatura e Telegram.</p></div><Link className="btn" href="/pedido">Pedir um livro</Link></div><section className="faq-list">{faqs.map((item,index)=><details className="card faq-item" key={item.q} open={index===0}><summary>{item.q}<span>+</span></summary><div className="faq-answer">{item.a}</div></details>)}</section></main></AppShell>;}
