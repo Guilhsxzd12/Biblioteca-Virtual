@@ -9,13 +9,14 @@ import {
   sendTelegramMessage
 } from "@/lib/telegram";
 
-type ChannelRole="official"|"reserve";
-type ChannelChat={id:number;type?:string;title?:string};
+export type ChannelRole="official"|"reserve";
+export type ChannelChat={id:number;type?:string;title?:string;username?:string};
 type TelegramMessage={message_id?:number;document?:{file_id?:string}};
 
 function escapeHtml(value:unknown){return String(value??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;");}
 function normalize(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
 function languageName(value?:string|null){return ({pt:"Português",en:"Inglês",es:"Espanhol",fr:"Francês",it:"Italiano",de:"Alemão"} as Record<string,string>)[value||""]||value||"Não informado";}
+function isPublicationChat(type?:string){return !type||type==="channel"||type==="supergroup";}
 function bookEpub(book:any){
   const mainIsEpub=book?.mime_type==="application/epub+zip"||String(book?.file_name||"").toLowerCase().endsWith(".epub");
   return mainIsEpub?{id:book.drive_file_id,name:book.file_name}:{id:book.kindle_drive_file_id,name:book.kindle_file_name};
@@ -26,7 +27,7 @@ function bookPdf(book:any){
 }
 
 export function telegramChannelWelcomeText(){
-  return `📚 <b>Sejam bem-vindos ao canal Kindle E-book!</b>\n\nAqui você acompanha os novos livros adicionados ao acervo Kindle Books e recebe as versões disponíveis em <b>EPUB</b> e <b>PDF</b>.\n\n🔔 Ative as notificações para não perder os novos títulos.\n📖 Use o EPUB para Kindle e aplicativos compatíveis.\n📄 Use o PDF para leitura em celular, tablet ou computador.\n\n🌐 <a href="${PUBLIC_SITE_URL}/biblioteca">Acessar o Kindle Books</a>\n\nBoa leitura! 🤍`;
+  return `📚 <b>Kindle Books conectado!</b>\n\nEste canal foi reconhecido pelo bot e está pronto para receber os novos livros publicados no acervo.\n\n📱 EPUB para Kindle e aplicativos compatíveis.\n📄 PDF para celular, tablet ou computador.\n\n🌐 <a href="${PUBLIC_SITE_URL}/biblioteca">Acessar o Kindle Books</a>\n\nBoa leitura! 🤍`;
 }
 
 async function nextRole(title:string):Promise<ChannelRole|null>{
@@ -39,25 +40,35 @@ async function nextRole(title:string):Promise<ChannelRole|null>{
   return fallbackRow?null:fallback;
 }
 
-export async function registerTelegramChannel(chat:ChannelChat){
-  if(chat.type&&chat.type!=="channel")return null;
+export async function registerTelegramChannel(chat:ChannelChat,forcedRole?:ChannelRole|null,replaceRole=false){
+  if(!isPublicationChat(chat.type))throw new Error("Este destino não é um canal ou supergrupo do Telegram.");
   const db=createAdminSupabaseClient();
   const {data:existing}=await db.from("telegram_channels").select("*").eq("chat_id",chat.id).maybeSingle();
-  if(existing){
-    await db.from("telegram_channels").update({title:chat.title||existing.title,active:true,updated_at:new Date().toISOString()}).eq("id",existing.id);
-    if(!existing.welcome_sent_at){
-      const message=await sendTelegramMessage(chat.id,telegramChannelWelcomeText());
-      await db.from("telegram_channels").update({welcome_sent_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",existing.id);
-      return {...existing,title:chat.title||existing.title,welcomeSent:true,message};
-    }
-    return existing;
+  let role:ChannelRole|null=forcedRole||((existing?.role as ChannelRole|undefined)??null);
+  if(!role)role=await nextRole(chat.title||"");
+  if(!role)throw new Error("Os canais Oficial e Reserva já estão cadastrados.");
+
+  const {data:roleOwner}=await db.from("telegram_channels").select("id,chat_id,title").eq("role",role).maybeSingle();
+  if(roleOwner&&Number(roleOwner.chat_id)!==Number(chat.id)){
+    if(!replaceRole)throw new Error(`A posição ${role==="official"?"Oficial":"Reserva"} já está ocupada por ${roleOwner.title||roleOwner.chat_id}.`);
+    const {error:deleteError}=await db.from("telegram_channels").delete().eq("id",roleOwner.id);if(deleteError)throw new Error(deleteError.message);
   }
-  const role=await nextRole(chat.title||"");if(!role)return null;
-  const {data,error}=await db.from("telegram_channels").insert({chat_id:chat.id,title:chat.title||null,role,active:true}).select("*").single();
-  if(error)throw new Error(error.message);
-  const message=await sendTelegramMessage(chat.id,telegramChannelWelcomeText());
-  await db.from("telegram_channels").update({welcome_sent_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",data.id);
-  return {...data,welcomeSent:true,message};
+
+  let row:any;
+  if(existing){
+    const {data,error}=await db.from("telegram_channels").update({title:chat.title||existing.title,role,active:true,updated_at:new Date().toISOString()}).eq("id",existing.id).select("*").single();
+    if(error)throw new Error(error.message);row=data;
+  }else{
+    const {data,error}=await db.from("telegram_channels").insert({chat_id:chat.id,title:chat.title||null,role,active:true}).select("*").single();
+    if(error)throw new Error(error.message);row=data;
+  }
+
+  let welcomeSent=false;let message:unknown=null;
+  if(!row.welcome_sent_at){
+    message=await sendTelegramMessage(chat.id,telegramChannelWelcomeText());
+    const now=new Date().toISOString();await db.from("telegram_channels").update({welcome_sent_at:now,updated_at:now}).eq("id",row.id);row={...row,welcome_sent_at:now};welcomeSent=true;
+  }
+  return {...row,welcomeSent,message};
 }
 
 async function readDriveBytes(fileId:string){
