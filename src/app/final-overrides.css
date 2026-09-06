@@ -1,0 +1,8 @@
+@media(max-width:420px){
+  .header-main{grid-template-columns:120px minmax(0,1fr)}
+  .brand-logo img{width:116px}
+  .header-actions{gap:0}
+  .header-action-icon{display:grid!important;width:34px;height:38px}
+  .header-request-btn{width:36px;height:38px}
+  .store-search{grid-column:1/-1}
+}
