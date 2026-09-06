@@ -6,6 +6,7 @@ import { FavoriteButton } from "@/components/FavoriteButton";
 import { KindleShareButton } from "@/components/KindleShareButton";
 import { BookCard } from "@/components/BookCard";
 import { HorizontalBookSlider } from "@/components/HorizontalBookSlider";
+import { BookViewTracker } from "@/components/BookViewTracker";
 import { requireApproved } from "@/lib/auth";
 import type { Book } from "@/lib/types";
 
@@ -38,7 +39,7 @@ export default async function BookPage({params}:{params:Promise<{slug:string}>})
   }).filter(item=>(item.author||"").toLowerCase()===(b.author||"").toLowerCase()||Boolean(item.category_id&&item.category_id===b.category_id)).slice(0,12);
   const hasPdf=isPdf(b)||Boolean(b.reading_pdf_drive_file_id);
   const hasEpub=isEpub(b)||Boolean(b.kindle_drive_file_id);
-  return <AppShell><main className="shell-width detail-page"><Link className="back-link" href="/biblioteca">← Voltar ao acervo</Link><section className="detail">
+  return <AppShell><BookViewTracker bookId={b.id}/><main className="shell-width detail-page"><Link className="back-link" href="/biblioteca">← Voltar ao acervo</Link><section className="detail">
     <div className="detail-cover-col">{b.cover_url?<img className="cover" src={b.cover_url} alt={`Capa de ${b.title}`}/>:<div className="cover-fallback">{b.title}</div>}<div className="detail-small-meta">{b.categories?.name&&<span>{b.categories.name}</span>}{b.language&&<span>{b.language.toUpperCase()}</span>}</div></div>
     <div className="detail-copy"><span className="eyebrow">KINDLE BOOKS</span><h1>{b.title}</h1><h2>{b.author}</h2><div className="detail-stats">{b.year&&<div><small>ANO</small><strong>{b.year}</strong></div>}{b.pages&&<div><small>PÁGINAS</small><strong>{b.pages}</strong></div>}{b.categories?.name&&<div><small>CATEGORIA</small><strong>{b.categories.name}</strong></div>}</div>
       <div className="format-note"><strong>Escolha o formato</strong><span>PDF para leitura direta ou EPUB para Kindle e outros aplicativos compatíveis.</span></div>
