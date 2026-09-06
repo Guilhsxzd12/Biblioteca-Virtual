@@ -5,7 +5,7 @@ const CANONICAL_ORIGIN="https://biblioteca-virtual-umber.vercel.app";
 
 export async function proxy(request: NextRequest) {
   if(request.nextUrl.pathname==="/kindle"||request.nextUrl.pathname.startsWith("/leitor/"))return NextResponse.redirect(new URL("/biblioteca",request.url),307);
-  if(request.nextUrl.pathname.startsWith("/api/user-books")||request.nextUrl.pathname.startsWith("/api/kindle"))return NextResponse.json({error:"Recurso desativado."},{status:410});
+  if(request.nextUrl.pathname.startsWith("/api/user-books"))return NextResponse.json({error:"Recurso desativado."},{status:410});
   const configured=(process.env.NEXT_PUBLIC_SITE_URL||CANONICAL_ORIGIN).replace(/\/$/,"");
   const canonical=new URL(configured);
   const host=request.headers.get("host")||"";
