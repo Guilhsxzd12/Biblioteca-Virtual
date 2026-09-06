@@ -9,8 +9,16 @@ function fileNameFromHeader(header:string|null,title:string){
   const match=header?.match(/filename="([^"]+)"/i);
   return match?.[1]||`${title.replace(/[^a-z0-9]+/gi,"-").replace(/^-|-$/g,"")||"livro"}-Kindle.epub`;
 }
+function norm(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}
+function sameTitle(candidate:string,target:string){const a=norm(candidate),b=norm(target);return a===b||a.startsWith(`${b} `)||b.startsWith(`${a} `);}
+function authorMatches(candidate:string,target:string){
+  const stop=new Set(["autor","nao","informado","george","linda","elio","garcia"]);
+  const a=new Set(norm(candidate).split(" ").filter(x=>x.length>=4&&!stop.has(x)));
+  const b=norm(target).split(" ").filter(x=>x.length>=4&&!stop.has(x));
+  return b.some(token=>a.has(token));
+}
 
-export function KindleShareButton({id,title,source="user"}:{id:string;title:string;source?:"user"|"catalog"}){
+export function KindleShareButton({id,title,author="",source="user"}:{id:string;title:string;author?:string;source?:"user"|"catalog"}){
   const [busy,setBusy]=useState(false);const [covers,setCovers]=useState<CoverChoice[]>([]);const [picker,setPicker]=useState(false);const [message,setMessage]=useState("");const [preparedFile,setPreparedFile]=useState<File|null>(null);const coverInput=useRef<HTMLInputElement|null>(null);
 
   useEffect(()=>{if(!picker)return;const previous=document.body.style.overflow;document.body.style.overflow="hidden";return()=>{document.body.style.overflow=previous;};},[picker]);
@@ -51,7 +59,11 @@ export function KindleShareButton({id,title,source="user"}:{id:string;title:stri
       const saved=await savedResponse.json();if(!savedResponse.ok)throw new Error(saved.error||"Não foi possível carregar as capas.");const metadata=metadataResponse.ok?await metadataResponse.json():{results:[]};
       const merged:CoverChoice[]=[];const seen=new Set<string>();
       for(const item of (saved.covers||[]) as CoverChoice[]){if(item.url&&!seen.has(item.url)){seen.add(item.url);merged.push(item);}}
-      for(const item of (metadata.results||[]) as MetadataResult[]){const url=String(item.coverUrl||"");if(url&&!seen.has(url)){seen.add(url);merged.push({url,label:`Opção ${merged.length+1}`,isDefault:false});}}
+      const exact=((metadata.results||[]) as MetadataResult[]).filter(item=>{
+        const itemTitle=String(item.title||"");const itemAuthor=String(item.author||"");
+        return Boolean(item.coverUrl&&sameTitle(itemTitle,title)&&(!author||authorMatches(itemAuthor,author)));
+      });
+      for(const item of exact){const url=String(item.coverUrl||"");if(url&&!seen.has(url)){seen.add(url);merged.push({url,label:"Outra edição deste livro",isDefault:false});}}
       setCovers(merged.slice(0,12));setPicker(true);
     }catch(error){setMessage(error instanceof Error?error.message:"Não foi possível preparar o Kindle.");}finally{setBusy(false);}
   }
@@ -63,11 +75,11 @@ export function KindleShareButton({id,title,source="user"}:{id:string;title:stri
     {picker&&<div className="cover-picker-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget&&!busy)setPicker(false);}}>
       <section className="cover-picker" role="dialog" aria-modal="true" aria-labelledby="cover-picker-title">
         <div className="cover-picker-head">
-          <div><span className="eyebrow">PREPARAR PARA O KINDLE</span><h2 id="cover-picker-title">Escolha a capa do EPUB</h2><p><strong>{title}</strong> · A capa escolhida será incorporada ao arquivo antes do download.</p></div>
+          <div><span className="eyebrow">PREPARAR PARA O KINDLE</span><h2 id="cover-picker-title">Escolha a capa do EPUB</h2><p><strong>{title}</strong> · Mostramos somente capas vinculadas a este mesmo livro.</p></div>
           <button type="button" className="icon-close" onClick={()=>!busy&&setPicker(false)} aria-label="Fechar">×</button>
         </div>
         <div className="cover-picker-body">
-          <div className="cover-picker-tip"><span>1</span><div><strong>Escolha uma capa</strong><small>Use uma das opções encontradas ou envie a sua imagem.</small></div></div>
+          <div className="cover-picker-tip"><span>1</span><div><strong>Escolha uma capa</strong><small>Use a principal, uma alternativa cadastrada ou outra edição compatível.</small></div></div>
           {!!covers.length&&<div className="cover-choice-grid">{covers.map((cover,index)=><button type="button" className={`cover-choice ${cover.isDefault?"default":""}`} key={`${cover.url}-${index}`} onClick={()=>prepareFile(cover.url)} disabled={busy}><div className="cover-choice-image"><img src={cover.url} alt={cover.isDefault?"Capa atual":cover.label}/>{cover.isDefault&&<span className="cover-badge">Atual</span>}</div><span>{cover.isDefault?"Usar capa atual":cover.label}</span></button>)}</div>}
           <button className="custom-cover-card" type="button" disabled={busy} onClick={()=>coverInput.current?.click()}><span className="custom-cover-icon">＋</span><strong>Enviar uma capa do dispositivo</strong><small>JPG, PNG ou WEBP</small></button>
           <input ref={coverInput} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={e=>{const file=e.target.files?.[0];if(file)void uploadCustomCover(file);}}/>
