@@ -19,7 +19,7 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<{
   const categories=(categoryData||[]) as Category[];
   const selectedCategory=categories.find(c=>c.slug===categoria);
   const filtered=all.filter(book=>(!query||matches(query,book))&&(!selectedCategory||book.category_id===selectedCategory.id));
-  const recent=all.slice(0,8);
+  const recent=all.slice(0,12);
   const featured=all.filter(book=>book.cover_url).slice(0,4);
 
   return <AppShell><main className="library-home">
@@ -35,9 +35,9 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<{
 
       {(query||selectedCategory)&&<section className="search-result-head"><span className="eyebrow">ACERVO</span><h1>{query?`Resultados para “${query}”`:selectedCategory?.name}</h1><p>{filtered.length} {filtered.length===1?"livro encontrado":"livros encontrados"}.</p></section>}
 
-      {!query&&!selectedCategory&&recent.length>0&&<section className="library-section"><div className="section-heading"><div><span className="eyebrow">NOVIDADES</span><h2>Adicionados recentemente</h2><p>Os últimos títulos que chegaram à estante.</p></div></div><div className="book-grid shelf-grid">{recent.map(book=><BookCard key={book.id} book={book}/>)}</div></section>}
+      {!query&&!selectedCategory&&recent.length>0&&<section className="library-section"><div className="section-heading"><div><span className="eyebrow">NOVIDADES</span><h2>Adicionados recentemente</h2><p>Deslize para o lado para ver os últimos títulos que chegaram à estante.</p></div></div><div className="book-slider">{recent.map(book=><BookCard key={book.id} book={book}/>)}</div></section>}
 
-      {query||selectedCategory?<section className="library-section">{filtered.length?<div className="book-grid shelf-grid">{filtered.map(book=><BookCard key={book.id} book={book}/>)}</div>:<div className="empty-state"><h3>Nenhum livro encontrado</h3><p>Tente pesquisar por uma parte do título ou pelo nome do autor.</p><Link className="btn ghost" href="/biblioteca">Voltar ao acervo</Link></div>}</section>:<div className="category-sections">{categories.map(category=>{const books=all.filter(book=>book.category_id===category.id).slice(0,8);if(!books.length)return null;return <section className="category-block" key={category.id}><div className="category-title"><div><span className="eyebrow">COLEÇÃO</span><h3>{category.name}</h3></div><Link href={`/biblioteca?categoria=${encodeURIComponent(category.slug)}`}>Ver todos <span>→</span></Link></div><div className="book-grid shelf-grid">{books.map(book=><BookCard key={book.id} book={book}/>)}</div></section>;})}</div>}
+      {query||selectedCategory?<section className="library-section search-books-section">{filtered.length?<div className="book-grid shelf-grid search-books-grid">{filtered.map(book=><BookCard key={book.id} book={book}/>)}</div>:<div className="empty-state"><h3>Nenhum livro encontrado</h3><p>Tente pesquisar por uma parte do título ou pelo nome do autor.</p><Link className="btn ghost" href="/biblioteca">Voltar ao acervo</Link></div>}</section>:<div className="category-sections">{categories.map(category=>{const books=all.filter(book=>book.category_id===category.id).slice(0,12);if(!books.length)return null;return <section className="category-block" key={category.id}><div className="category-title"><div><span className="eyebrow">COLEÇÃO</span><h3>{category.name}</h3></div><Link href={`/biblioteca?categoria=${encodeURIComponent(category.slug)}`}>Ver todos <span>→</span></Link></div><div className="book-slider">{books.map(book=><BookCard key={book.id} book={book}/>)}</div></section>;})}</div>}
     </div>
   </main></AppShell>;
 }
