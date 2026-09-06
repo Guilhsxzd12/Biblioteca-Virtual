@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { BackToPrevious } from "@/components/BackToPrevious";
 import { BookCard } from "@/components/BookCard";
 import { HorizontalBookSlider } from "@/components/HorizontalBookSlider";
 import { requireApproved } from "@/lib/auth";
@@ -8,7 +9,7 @@ import type { Book,Category } from "@/lib/types";
 
 function norm(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
 function matches(query:string,book:Book){const q=norm(query);return norm(book.title).includes(q)||norm(book.author||"").includes(q);}
-function excerpt(value:string|null,max=220){const text=(value||"Sinopse não informada.").replace(/\s+/g," ").trim();return text.length>max?`${text.slice(0,max).trim()}…`:text;}
+function excerpt(value:string|null,max=280){const text=(value||"Sinopse não informada.").replace(/\s+/g," ").trim();return text.length>max?`${text.slice(0,max).trim()}…`:text;}
 function urlWith(base:{q?:string;categoria?:string;autor?:string},patch:{q?:string;categoria?:string;autor?:string}){
   const params=new URLSearchParams();const next={...base,...patch};
   if(next.q)params.set("q",next.q);if(next.categoria)params.set("categoria",next.categoria);if(next.autor)params.set("autor",next.autor);
@@ -70,7 +71,7 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<{
         <aside className="catalog-filter-sidebar">{filters}</aside>
         <section className="catalog-results-main">
           <details className="mobile-filter-drawer"><summary>Filtros e categorias</summary>{filters}</details>
-          <div className="search-result-head"><span className="eyebrow">ACERVO</span><h1>{query?`Resultados para “${query}”`:authorFilter?authorFilter:selectedCategory?.name}</h1><p>{filtered.length} {filtered.length===1?"livro encontrado":"livros encontrados"}{selectedCategory?` em ${selectedCategory.name}`:""}.</p></div>
+          <div className="search-result-head"><BackToPrevious/><h1>{query?`Resultados para “${query}”`:authorFilter?authorFilter:selectedCategory?.name}</h1><p>{filtered.length} {filtered.length===1?"livro encontrado":"livros encontrados"}{selectedCategory?` em ${selectedCategory.name}`:""}.</p></div>
           {filtered.length?<div className="book-grid shelf-grid search-books-grid">{filtered.map(book=><BookCard key={book.id} book={book}/>)}</div>:<div className="empty-state"><h3>Nenhum livro encontrado</h3><p>Tente outro título, autor ou categoria.</p><Link className="btn ghost" href="/biblioteca">Limpar busca</Link></div>}
         </section>
       </div>:<div className="category-sections">{categories.map(category=>{const books=all.filter(book=>book.category_id===category.id).slice(0,12);return <section className="category-block" key={category.id}><div className="category-title"><div><span className="eyebrow">COLEÇÃO</span><h3>{category.name}</h3></div><Link href={`/biblioteca?categoria=${encodeURIComponent(category.slug)}`}>Ver todos <span>→</span></Link></div>{books.length?<HorizontalBookSlider>{books.map(book=><BookCard key={book.id} book={book}/>)}</HorizontalBookSlider>:<div className="category-empty">Nenhum livro nesta categoria ainda.</div>}</section>;})}</div>}
