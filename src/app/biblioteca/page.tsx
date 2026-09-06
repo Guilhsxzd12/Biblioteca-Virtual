@@ -47,7 +47,7 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<{
     <div className="shell-width library-content">
       {!filteredMode&&<nav className="category-strip" aria-label="Categorias"><Link className="active" href="/biblioteca">Todos</Link>{categories.map(c=><Link href={`/biblioteca?categoria=${encodeURIComponent(c.slug)}`} key={c.id}>{c.name}</Link>)}</nav>}
 
-      {!filteredMode&&recent.length>0&&<section className="library-section"><div className="section-heading"><div><span className="eyebrow">NOVIDADES</span><h2>Adicionados recentemente</h2><p>Arraste com o mouse ou deslize com o dedo para explorar.</p></div></div><HorizontalBookSlider>{recent.map(book=><BookCard key={book.id} book={book}/>)}</HorizontalBookSlider></section>}
+      {!filteredMode&&recent.length>0&&<section id="novidades" className="library-section"><div className="section-heading"><div><span className="eyebrow">NOVIDADES</span><h2>Adicionados recentemente</h2><p>Arraste com o mouse ou deslize com o dedo para explorar.</p></div></div><HorizontalBookSlider>{recent.map(book=><BookCard key={book.id} book={book}/>)}</HorizontalBookSlider></section>}
 
       {filteredMode?<div className="catalog-results-layout">
         <aside className="catalog-filter-sidebar">{filters}</aside>
