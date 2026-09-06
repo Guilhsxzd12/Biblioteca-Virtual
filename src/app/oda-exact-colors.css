@@ -1,0 +1,89 @@
+/* Exact ODA palette sampled from the user's ODA reference screenshot. */
+:root{
+  --oda-main:#4D0830;
+  --oda-main-deep:#4B072F;
+  --oda-header:#4F0C30;
+  --oda-header-light:#551839;
+  --oda-cream:#FEF4E0;
+  --oda-rose:#D2BAB4;
+  --oda-sand:#FBEFDA;
+  --oda-outline:#8E4864;
+
+  --ink:#2E1824;
+  --muted:#7E6570;
+  --paper:#FFFDF9;
+  --cream:var(--oda-sand);
+  --soft:#F3E5DE;
+  --accent:var(--oda-main);
+  --accent-dark:var(--oda-main-deep);
+  --gold:var(--oda-cream);
+  --line:#E3CEC7;
+}
+
+html,body{background:var(--oda-sand)!important;color:var(--ink)!important}
+
+/* Main site surfaces */
+.editorial-hero{
+  background:linear-gradient(180deg,var(--oda-main) 0%,var(--oda-main-deep) 100%)!important;
+  border-color:#6E264B!important;
+  color:var(--oda-cream)!important;
+}
+.editorial-copy .eyebrow,.editorial-copy h1,.editorial-copy .hero-stats strong{color:var(--oda-cream)!important}
+.editorial-copy>p,.editorial-copy .hero-stats span{color:var(--oda-rose)!important}
+.hero-search{background:#FFFDF9!important;border-color:#E7D6C7!important}
+.hero-search button{background:var(--oda-main)!important;color:var(--oda-cream)!important}
+
+.category-strip a{background:#FFFDF9!important;border-color:#DFC9BF!important;color:var(--oda-main)!important}
+.category-strip a.active,.category-strip a:hover{background:var(--oda-main)!important;border-color:var(--oda-main)!important;color:var(--oda-cream)!important}
+
+.eyebrow,.text-link,.category-title>a,.book-footer-meta,.clear-filters{color:var(--oda-main)!important}
+.btn{background:var(--oda-main)!important;border-color:var(--oda-main)!important;color:var(--oda-cream)!important}
+.btn:hover{background:var(--oda-main-deep)!important}
+.btn.secondary{background:var(--oda-header-light)!important;border-color:var(--oda-header-light)!important;color:var(--oda-cream)!important}
+.btn.ghost{background:#FFFDF9!important;border-color:#DFC9BF!important;color:var(--oda-main)!important}
+.card,.panel,.empty-state,.empty,.catalog-filter-sidebar,.mobile-filter-drawer,.cover-picker{background:#FFFDF9!important;border-color:#E3CEC7!important}
+.book-cover-wrap{box-shadow:0 14px 28px rgba(77,8,48,.16)!important}
+.cover-fallback{background:linear-gradient(145deg,#EFD8CF,#FBEFDA)!important;color:var(--oda-main)!important}
+
+/* Header = same ODA burgundy/cream family, not an interpreted palette. */
+.capsule-store-header{background:linear-gradient(to bottom,rgba(251,239,218,.98),rgba(251,239,218,.78),transparent)!important}
+.header-capsule{
+  border-color:var(--oda-outline)!important;
+  background:linear-gradient(105deg,var(--oda-header) 0%,var(--oda-header-light) 100%)!important;
+  color:var(--oda-cream)!important;
+  box-shadow:0 14px 38px rgba(77,8,48,.24)!important;
+}
+.capsule-nav>a,.capsule-nav>.capsule-dropdown>summary{color:var(--oda-rose)!important}
+.capsule-nav>a:hover,.capsule-nav>.capsule-dropdown>summary:hover,.capsule-dropdown[open]>summary{background:rgba(254,244,224,.08)!important;color:var(--oda-cream)!important}
+.capsule-search{border-color:rgba(254,244,224,.22)!important;background:rgba(254,244,224,.08)!important}
+.capsule-search svg{color:var(--oda-rose)!important}
+.capsule-search input{color:var(--oda-cream)!important}
+.capsule-search input::placeholder{color:var(--oda-rose)!important}
+.capsule-search button,.capsule-request{background:var(--oda-cream)!important;color:var(--oda-main)!important}
+.capsule-request svg{color:var(--oda-main)!important}
+.capsule-request:hover{background:#FFF8E9!important}
+.capsule-mobile-menu>summary{border-color:rgba(254,244,224,.24)!important;background:rgba(254,244,224,.08)!important;color:var(--oda-cream)!important}
+.capsule-mobile-menu[open]>summary{background:rgba(254,244,224,.14)!important}
+
+.capsule-mobile-panel,.capsule-dropdown>.capsule-dropdown-menu{background:#FFFDF9!important;border-color:#DEC8BE!important;color:var(--oda-main)!important}
+.dropdown-kicker{color:#916B78!important}
+.dropdown-link-grid>a,.mobile-menu-group>div>a,.capsule-mobile-panel>nav>a,.mobile-menu-group>summary{color:#5A3144!important}
+.dropdown-link-grid>a:hover,.mobile-menu-group>div>a:hover,.capsule-mobile-panel>nav>a:hover,.mobile-menu-group>summary:hover{background:#F5E4DE!important;color:var(--oda-main)!important}
+.mobile-capsule-search button{background:var(--oda-main)!important;color:var(--oda-cream)!important}
+
+/* Detail / forms */
+.detail-stats,.synopsis-block,.related-section,.filter-block+.filter-block{border-color:#E2CCC3!important}
+input,textarea,select{border-color:#E1CDC4!important;background:#FFFDF9!important}
+input:focus,textarea:focus,select:focus{border-color:var(--oda-outline)!important;box-shadow:0 0 0 3px rgba(77,8,48,.09)!important}
+
+/* Footer */
+.site-footer{background:#F4E3DC!important;border-color:#DEC8BE!important}
+.footer-bottom{background:var(--oda-main-deep)!important;border-color:#6A2147!important;color:var(--oda-rose)!important}
+.site-footer a:hover{color:var(--oda-main)!important}
+
+/* Keep the login colors from the ODA PANEL reference, which is a separate visual system. */
+.oda-login-page{background:#F9F8F5!important}
+.oda-login-intro h1,.oda-inline-link{color:#703D45!important}
+.oda-login-card:before{background:linear-gradient(90deg,#703D45,#8E4864,#B58A42)!important}
+.oda-login-submit{background:linear-gradient(100deg,#22BDF0,#2877FF)!important}
+.oda-register-button{background:linear-gradient(100deg,#35476E,#20263E)!important}
