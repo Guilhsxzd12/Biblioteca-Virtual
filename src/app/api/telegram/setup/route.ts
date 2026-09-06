@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { getTelegramBot,getTelegramWebhookInfo,setupTelegramWebhook,PUBLIC_SITE_URL } from "@/lib/telegram";
+import { getTelegramBot,getTelegramWebhookInfo,setupTelegramWebhook,telegramWebhookUrl } from "@/lib/telegram";
 
 export async function GET(){
   try{
     await requireAdmin();
     const [bot,webhookInfo]=await Promise.all([getTelegramBot(),getTelegramWebhookInfo()]);
-    const expected=`${PUBLIC_SITE_URL}/api/telegram/webhook`;
+    const expected=telegramWebhookUrl();
     const healthy=webhookInfo.url===expected&&!webhookInfo.last_error_message;
     return NextResponse.json({configured:true,bot,webhookInfo,healthy,expectedWebhook:expected});
   }
