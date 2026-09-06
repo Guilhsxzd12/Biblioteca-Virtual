@@ -48,20 +48,27 @@ export async function ensureKindleVersion(supabase:SupabaseClient,userId:string,
 export async function getCoverChoices(supabase:SupabaseClient,source:KindleSource,id:string){
   const sourceItem=await loadKindleSource(supabase,source,id);
   const admin=createAdminSupabaseClient();
-  const [{data:catalog},{data:users}]=await Promise.all([
+  const [{data:manual},{data:catalog},{data:users}]=await Promise.all([
+    source==="catalog"?admin.from("book_covers").select("cover_url,label,source,created_at").eq("book_id",sourceItem.id).order("created_at",{ascending:true}):Promise.resolve({data:[] as any[]}),
     admin.from("books").select("title,author,cover_url").not("cover_url","is",null),
     admin.from("user_books").select("title,author,cover_url").not("cover_url","is",null)
   ]);
-  const candidates=[sourceItem,...((catalog||[]) as SourceBook[]),...((users||[]) as SourceBook[])].filter(x=>x.cover_url&&sameBook(x,sourceItem));
+
   const seen=new Set<string>();
-  const result:{url:string;label:string;isDefault:boolean}[]=[];
-  for(const c of candidates){
-    const url=String(c.cover_url||"");
-    if(!url||seen.has(url))continue;
+  const result:{url:string;label:string;isDefault:boolean;source?:string}[]=[];
+  const add=(urlValue:string|null|undefined,label:string,isDefault=false,coverSource?:string)=>{
+    const url=String(urlValue||"").trim();
+    if(!url||seen.has(url))return;
     seen.add(url);
-    result.push({url,label:`Capa ${result.length+1}`,isDefault:url===sourceItem.cover_url});
-  }
-  result.sort((a,b)=>Number(b.isDefault)-Number(a.isDefault));
+    result.push({url,label,isDefault,source:coverSource});
+  };
+
+  add(sourceItem.cover_url,"Capa atual",true,"current");
+  for(const item of manual||[])add(item.cover_url,item.label||`Capa alternativa ${result.length}`,false,item.source||"manual");
+
+  const related=[...((catalog||[]) as SourceBook[]),...((users||[]) as SourceBook[])].filter(x=>x.cover_url&&sameBook(x,sourceItem));
+  for(const item of related)add(item.cover_url,`Outra edição`,false,"catalog");
+
   return {item:sourceItem,covers:result};
 }
 
