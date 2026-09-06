@@ -1,0 +1,43 @@
+.book-slider{
+  display:grid;
+  grid-auto-flow:column;
+  grid-auto-columns:minmax(158px,210px);
+  gap:18px;
+  overflow-x:auto;
+  overscroll-behavior-inline:contain;
+  scroll-snap-type:x proximity;
+  padding:4px 2px 16px;
+  scrollbar-width:thin;
+}
+.book-slider>*{scroll-snap-align:start;min-width:0}
+.related-section{margin-top:54px;padding-top:34px;border-top:1px solid rgba(83,53,39,.18)}
+.related-section .section-heading{margin-bottom:18px}
+.search-result-head{margin-bottom:18px!important;padding-bottom:0!important}
+.search-result-head+.search-books-section,.search-books-section{margin-top:0!important;padding-top:0!important}
+.search-books-grid{margin-top:0!important;padding-top:0!important}
+.kindle-ready-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.request-page-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(260px,.75fr);gap:24px;align-items:start}
+.request-book-form,.request-info{padding:28px}
+.floating-contact{position:fixed;right:22px;bottom:22px;z-index:80;display:flex;flex-direction:column;gap:11px}
+.contact-bubble{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;box-shadow:0 10px 28px rgba(0,0,0,.18);transition:transform .18s ease,box-shadow .18s ease;color:#fff}
+.contact-bubble:hover{transform:translateY(-2px);box-shadow:0 13px 31px rgba(0,0,0,.23)}
+.contact-bubble svg{width:28px;height:28px}
+.contact-bubble.whatsapp{background:#25d366}
+.contact-bubble.telegram{background:#229ed9}
+.mobile-bottom-nav.has-admin{grid-template-columns:repeat(5,1fr)!important}
+
+@media(max-width:900px){
+  .book-slider{grid-auto-columns:minmax(145px,42vw);gap:14px;margin-right:-16px;padding-right:16px}
+  .request-page-grid{grid-template-columns:1fr}
+  .floating-contact{right:14px;bottom:86px}
+  .contact-bubble{width:48px;height:48px}
+  .mobile-bottom-nav{grid-template-columns:repeat(4,1fr)!important}
+  .mobile-bottom-nav.has-admin{grid-template-columns:repeat(5,1fr)!important}
+}
+
+@media(max-width:520px){
+  .book-slider{grid-auto-columns:43vw}
+  .related-section{margin-top:36px;padding-top:24px}
+  .request-book-form,.request-info{padding:20px}
+  .mobile-bottom-nav a span{font-size:10px}
+}
