@@ -10,6 +10,7 @@ type SourceBook={id:string;user_id?:string;title:string;author:string;descriptio
 
 function normalize(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}
 function sameBook(a:SourceBook,b:{title:string;author:string}){return normalize(a.title)===normalize(b.title)&&normalize(a.author||"")===normalize(b.author||"");}
+function isEpub(item:SourceBook){return item.mime_type==="application/epub+zip"||item.file_name.toLowerCase().endsWith(".epub");}
 
 export async function loadKindleSource(supabase:SupabaseClient,source:KindleSource,id:string){
   if(source==="user"){
@@ -27,10 +28,8 @@ export async function loadKindleSource(supabase:SupabaseClient,source:KindleSour
 export async function ensureKindleVersion(supabase:SupabaseClient,userId:string,source:KindleSource,id:string){
   const item=await loadKindleSource(supabase,source,id);
   if(item.kindle_drive_file_id&&item.kindle_file_name)return {item,driveFileId:item.kindle_drive_file_id,fileName:item.kindle_file_name,generated:false};
-
-  const isEpub=item.mime_type==="application/epub+zip"||item.file_name.toLowerCase().endsWith(".epub");
-  if(!isEpub)throw new Error("Este livro precisa ter um EPUB original para ser enviado ao Kindle.");
-  if(!item.cover_url)throw new Error("Adicione uma capa ao livro antes de enviar ao Kindle.");
+  if(!isEpub(item))throw new Error("Este livro precisa ter um EPUB original para ser enviado ao Kindle.");
+  if(!item.cover_url)throw new Error("Escolha ou envie uma capa antes de gerar a versão Kindle.");
 
   const epubResponse=await fetchDriveFile(item.drive_file_id);
   const epubBytes=new Uint8Array(await epubResponse.arrayBuffer());
@@ -67,11 +66,17 @@ export async function getCoverChoices(supabase:SupabaseClient,source:KindleSourc
 }
 
 export async function prepareKindleBytes(supabase:SupabaseClient,userId:string,source:KindleSource,id:string,coverUrl?:string|null){
+  const selected=coverUrl?.trim()||null;
+  if(selected){
+    const item=await loadKindleSource(supabase,source,id);
+    if(!isEpub(item))throw new Error("Este livro precisa ter um EPUB original para ser enviado ao Kindle.");
+    const response=await fetchDriveFile(item.drive_file_id);
+    const originalBytes=new Uint8Array(await response.arrayBuffer());
+    const bytes=await replaceEpubCover(originalBytes,selected);
+    return {bytes,fileName:`${slugifyTitle(item.title)}-Kindle.epub`,title:item.title};
+  }
   const ensured=await ensureKindleVersion(supabase,userId,source,id);
   const epubResponse=await fetchDriveFile(ensured.driveFileId);
   const baseBytes=new Uint8Array(await epubResponse.arrayBuffer());
-  const selected=coverUrl?.trim()||ensured.item.cover_url||null;
-  if(!selected||selected===ensured.item.cover_url)return {bytes:baseBytes,fileName:ensured.fileName,title:ensured.item.title};
-  const bytes=await replaceEpubCover(baseBytes,selected);
-  return {bytes,fileName:ensured.fileName,title:ensured.item.title};
+  return {bytes:baseBytes,fileName:ensured.fileName,title:ensured.item.title};
 }
