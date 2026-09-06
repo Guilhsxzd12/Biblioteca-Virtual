@@ -2,7 +2,7 @@ import { NextRequest,NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { publishBookToTelegramChannels,registerTelegramChannel,resendWelcomeToTelegramChannels,type ChannelRole } from "@/lib/telegram-channels";
-import { getTelegramChat,getTelegramWebhookInfo,setupTelegramWebhook,PUBLIC_SITE_URL } from "@/lib/telegram";
+import { getTelegramChat,getTelegramWebhookInfo,setupTelegramWebhook,telegramWebhookUrl } from "@/lib/telegram";
 
 export async function GET(){
   try{
@@ -13,7 +13,7 @@ export async function GET(){
       getTelegramWebhookInfo()
     ]);
     if(error)throw new Error(error.message);
-    const expected=`${PUBLIC_SITE_URL}/api/telegram/webhook`;
+    const expected=telegramWebhookUrl();
     return NextResponse.json({channels:data||[],webhookInfo,healthy:webhookInfo.url===expected&&!webhookInfo.last_error_message,expectedWebhook:expected});
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Acesso negado."},{status:403});}
 }
