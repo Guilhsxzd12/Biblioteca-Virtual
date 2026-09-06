@@ -7,6 +7,18 @@ export const TELEGRAM_MAX_INCOMING_BYTES=20*1024*1024;
 export const TELEGRAM_MAX_OUTGOING_BYTES=50*1024*1024;
 export const PUBLIC_SITE_URL="https://estantevirtual.shop";
 
+export type TelegramWebhookInfo={
+  url:string;
+  has_custom_certificate:boolean;
+  pending_update_count:number;
+  ip_address?:string;
+  last_error_date?:number;
+  last_error_message?:string;
+  last_synchronization_error_date?:number;
+  max_connections?:number;
+  allowed_updates?:string[];
+};
+
 function token(){const value=process.env.TELEGRAM_BOT_TOKEN?.trim();if(!value)throw new Error("TELEGRAM_BOT_TOKEN não configurado.");return value;}
 export function telegramWebhookSecret(){return createHash("sha256").update(`${token()}|${getSiteOrigin()}`).digest("hex");}
 
@@ -62,10 +74,17 @@ export async function getTelegramFile(fileId:string){
 
 export async function answerTelegramCallback(id:string,text?:string){return telegramApi("answerCallbackQuery",{callback_query_id:id,...(text?{text}:{})});}
 export async function getTelegramBot(){return telegramApi<{id:number;username?:string;first_name:string}>("getMe");}
+export async function getTelegramWebhookInfo(){return telegramApi<TelegramWebhookInfo>("getWebhookInfo");}
 
 export async function setupTelegramWebhook(){
   const url=`${PUBLIC_SITE_URL}/api/telegram/webhook`;
-  await telegramApi("setWebhook",{url,secret_token:telegramWebhookSecret(),allowed_updates:["message","callback_query","channel_post","my_chat_member"],drop_pending_updates:false});
+  await telegramApi("setWebhook",{
+    url,
+    secret_token:telegramWebhookSecret(),
+    allowed_updates:["message","callback_query","channel_post","edited_channel_post","my_chat_member"],
+    drop_pending_updates:false,
+    max_connections:40
+  });
   await telegramApi("setMyCommands",{commands:[
     {command:"start",description:`Abrir a ${SITE_NAME}`},
     {command:"menu",description:"Abrir o menu principal"},
@@ -75,7 +94,9 @@ export async function setupTelegramWebhook(){
     {command:"assinatura",description:"Consultar minha assinatura"},
     {command:"sair",description:"Sair ou trocar de conta"}
   ]});
-  return {url,bot:await getTelegramBot()};
+  const [bot,webhookInfo]=await Promise.all([getTelegramBot(),getTelegramWebhookInfo()]);
+  const healthy=webhookInfo.url===url&&!webhookInfo.last_error_message;
+  return {url,bot,webhookInfo,healthy};
 }
 
 export function telegramMainKeyboard(){
