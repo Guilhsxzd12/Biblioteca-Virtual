@@ -79,6 +79,22 @@
 .admin-search-empty h3{font-size:21px}
 .admin-library-panel{min-width:0}
 
+/* Cover manager search */
+.cover-search-panel{margin-bottom:18px;padding:18px 20px}
+.admin-cover-search{display:flex;align-items:center;gap:9px;width:100%}
+.admin-cover-search input{flex:1;min-width:0;height:46px;border-radius:999px;padding:0 16px}
+.admin-cover-search .btn{flex:none;min-height:42px}
+
+/* Local EPUB/PDF metadata */
+.file-metadata-note{padding:11px 13px;border:1px solid #D9C2BA;border-radius:14px;background:#FFF9ED;color:#6D4C59;font-size:11px;line-height:1.45}
+
+/* Telegram publishing — kept in the Kindle Books palette */
+.telegram-publish-btn{margin-top:-2px;background:#FEF4E0!important;color:#4D0830!important;border:1px solid #8E4864!important;box-shadow:none!important}
+.telegram-publish-btn:hover{background:#F6E6DF!important}
+.telegram-publish-hint{display:block;margin-top:-5px;color:#806A72;font-size:10.5px;line-height:1.45}
+.telegram-mini{background:#6B1741!important;color:#FEF4E0!important;border-color:#6B1741!important}
+.telegram-mini:hover{background:#4D0830!important}
+
 @media(max-width:900px){
   .book-slider{
     margin-right:0!important;
@@ -137,6 +153,7 @@
   .admin-book-search{align-items:stretch}
   .admin-book-search input{height:42px}
   .catalog-pagination{gap:7px;margin-top:30px}.pagination-page,.pagination-arrow{width:38px;height:38px;font-size:11px}.pagination-ellipsis{height:38px}
+  .admin-cover-search{display:grid;grid-template-columns:1fr auto}.admin-cover-search input{grid-column:1/-1}.admin-cover-search .btn{min-width:100px}
 }
 
 @media(max-width:420px){
