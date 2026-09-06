@@ -7,19 +7,26 @@ import { requireApproved } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Book,Category } from "@/lib/types";
 
+type LibraryQuery={q?:string;categoria?:string;autor?:string;pagina?:string};
+
 function norm(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
 function matches(query:string,book:Book){const q=norm(query);return norm(book.title).includes(q)||norm(book.author||"").includes(q);}
-function excerpt(value:string|null,max=280){const text=(value||"Sinopse não informada.").replace(/\s+/g," ").trim();return text.length>max?`${text.slice(0,max).trim()}…`:text;}
-function urlWith(base:{q?:string;categoria?:string;autor?:string},patch:{q?:string;categoria?:string;autor?:string}){
+function excerpt(value:string|null,max=220){const text=(value||"Sinopse não informada.").replace(/\s+/g," ").trim();return text.length>max?`${text.slice(0,max).trim()}…`:text;}
+function urlWith(base:LibraryQuery,patch:LibraryQuery){
   const params=new URLSearchParams();const next={...base,...patch};
-  if(next.q)params.set("q",next.q);if(next.categoria)params.set("categoria",next.categoria);if(next.autor)params.set("autor",next.autor);
+  if(next.q)params.set("q",next.q);if(next.categoria)params.set("categoria",next.categoria);if(next.autor)params.set("autor",next.autor);if(next.pagina&&next.pagina!=="1")params.set("pagina",next.pagina);
   const qs=params.toString();return qs?`/biblioteca?${qs}`:"/biblioteca";
 }
+function paginationItems(current:number,total:number):(number|string)[]{
+  if(total<=7)return Array.from({length:total},(_,index)=>index+1);
+  const items:(number|string)[]=[1];const start=Math.max(2,current-2);const end=Math.min(total-1,current+2);
+  if(start>2)items.push("…");for(let page=start;page<=end;page++)items.push(page);if(end<total-1)items.push("…");items.push(total);return items;
+}
 
-export default async function LibraryPage({searchParams}:{searchParams:Promise<{q?:string;categoria?:string;autor?:string}>}){
+export default async function LibraryPage({searchParams}:{searchParams:Promise<LibraryQuery>}){
   const {supabase,profile}=await requireApproved();
   const admin=createAdminSupabaseClient();
-  const {q="",categoria="",autor=""}=await searchParams;
+  const {q="",categoria="",autor="",pagina="1"}=await searchParams;
   const query=q.trim();const authorFilter=autor.trim();
   const [{data:bookData},{data:categoryData},{data:favoriteRows},{data:viewRows}]=await Promise.all([
     supabase.from("books").select("*,categories(name)").eq("published",true).order("created_at",{ascending:false}),
@@ -39,12 +46,13 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<{
   const popular=[...all].sort((a,b)=>(favoriteCounts.get(b.id)||0)-(favoriteCounts.get(a.id)||0)||newestTie(a,b)).slice(0,12);
   const spotlight=popular[0]||mostAccessed[0]||recent[0];
   const filteredMode=Boolean(query||selectedCategory||authorFilter);
-  const activeBase={q:query||undefined,categoria:selectedCategory?.slug,autor:authorFilter||undefined};
+  const activeBase:LibraryQuery={q:query||undefined,categoria:selectedCategory?.slug,autor:authorFilter||undefined};
+  const pageSize=20;const parsedPage=Number.parseInt(pagina,10);const requestedPage=Number.isFinite(parsedPage)&&parsedPage>0?parsedPage:1;const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));const currentPage=Math.min(requestedPage,totalPages);const pageStart=(currentPage-1)*pageSize;const pagedFiltered=filtered.slice(pageStart,pageStart+pageSize);const pageItems=paginationItems(currentPage,totalPages);
 
   const filters=<div className="filter-panel-inner">
     <div className="filter-block"><h3>Pesquisar</h3><form className="filter-search" action="/biblioteca"><input name="q" defaultValue={query} placeholder="Título ou autor"/>{selectedCategory&&<input type="hidden" name="categoria" value={selectedCategory.slug}/>} {authorFilter&&<input type="hidden" name="autor" value={authorFilter}/>}<button type="submit">Buscar</button></form></div>
-    <div className="filter-block"><h3>Categorias</h3><div className="filter-links"><Link className={!selectedCategory?"active":""} href={urlWith(activeBase,{categoria:""})}>Todas</Link>{categories.map(category=><Link className={selectedCategory?.id===category.id?"active":""} key={category.id} href={urlWith(activeBase,{categoria:category.slug})}>{category.name}</Link>)}</div></div>
-    <div className="filter-block"><h3>Autores</h3><div className="filter-links author-filter-links"><Link className={!authorFilter?"active":""} href={urlWith(activeBase,{autor:""})}>Todos</Link>{authors.slice(0,18).map(author=><Link className={norm(author)===norm(authorFilter)?"active":""} key={author} href={urlWith(activeBase,{autor:author})}>{author}</Link>)}</div></div>
+    <div className="filter-block"><h3>Categorias</h3><div className="filter-links"><Link className={!selectedCategory?"active":""} href={urlWith(activeBase,{categoria:"",pagina:""})}>Todas</Link>{categories.map(category=><Link className={selectedCategory?.id===category.id?"active":""} key={category.id} href={urlWith(activeBase,{categoria:category.slug,pagina:""})}>{category.name}</Link>)}</div></div>
+    <div className="filter-block"><h3>Autores</h3><div className="filter-links author-filter-links"><Link className={!authorFilter?"active":""} href={urlWith(activeBase,{autor:"",pagina:""})}>Todos</Link>{authors.slice(0,18).map(author=><Link className={norm(author)===norm(authorFilter)?"active":""} key={author} href={urlWith(activeBase,{autor:author,pagina:""})}>{author}</Link>)}</div></div>
     {(query||selectedCategory||authorFilter)&&<Link className="clear-filters" href="/biblioteca">Limpar filtros</Link>}
   </div>;
 
@@ -71,8 +79,8 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<{
         <aside className="catalog-filter-sidebar">{filters}</aside>
         <section className="catalog-results-main">
           <details className="mobile-filter-drawer"><summary>Filtros e categorias</summary>{filters}</details>
-          <div className="search-result-head"><BackToPrevious/><h1>{query?`Resultados para “${query}”`:authorFilter?authorFilter:selectedCategory?.name}</h1><p>{filtered.length} {filtered.length===1?"livro encontrado":"livros encontrados"}{selectedCategory?` em ${selectedCategory.name}`:""}.</p></div>
-          {filtered.length?<div className="book-grid shelf-grid search-books-grid">{filtered.map(book=><BookCard key={book.id} book={book}/>)}</div>:<div className="empty-state"><h3>Nenhum livro encontrado</h3><p>Tente outro título, autor ou categoria.</p><Link className="btn ghost" href="/biblioteca">Limpar busca</Link></div>}
+          <div className="search-result-head"><BackToPrevious/><h1>{query?`Resultados para “${query}”`:authorFilter?authorFilter:selectedCategory?.name}</h1><p>{filtered.length} {filtered.length===1?"livro encontrado":"livros encontrados"}{selectedCategory?` em ${selectedCategory.name}`:""}{filtered.length>pageSize?` • página ${currentPage} de ${totalPages}`:""}.</p></div>
+          {filtered.length?<><div className="book-grid shelf-grid search-books-grid">{pagedFiltered.map(book=><BookCard key={book.id} book={book}/>)}</div>{totalPages>1&&<nav className="catalog-pagination" aria-label="Paginação do acervo">{currentPage>1&&<Link className="pagination-arrow" href={urlWith(activeBase,{pagina:String(currentPage-1)})} aria-label="Página anterior">←</Link>}{pageItems.map((item,index)=>typeof item==="number"?<Link key={item} className={`pagination-page ${item===currentPage?"active":""}`} href={urlWith(activeBase,{pagina:String(item)})} aria-current={item===currentPage?"page":undefined}>{item}</Link>:<span className="pagination-ellipsis" key={`ellipsis-${index}`}>…</span>)}{currentPage<totalPages&&<Link className="pagination-arrow" href={urlWith(activeBase,{pagina:String(currentPage+1)})} aria-label="Próxima página">→</Link>}</nav>}</>:<div className="empty-state"><h3>Nenhum livro encontrado</h3><p>Tente outro título, autor ou categoria.</p><Link className="btn ghost" href="/biblioteca">Limpar busca</Link></div>}
         </section>
       </div>:<div className="category-sections">{categories.map(category=>{const books=all.filter(book=>book.category_id===category.id).slice(0,12);return <section className="category-block" key={category.id}><div className="category-title"><div><span className="eyebrow">COLEÇÃO</span><h3>{category.name}</h3></div><Link href={`/biblioteca?categoria=${encodeURIComponent(category.slug)}`}>Ver todos <span>→</span></Link></div>{books.length?<HorizontalBookSlider>{books.map(book=><BookCard key={book.id} book={book}/>)}</HorizontalBookSlider>:<div className="category-empty">Nenhum livro nesta categoria ainda.</div>}</section>;})}</div>}
     </div>
