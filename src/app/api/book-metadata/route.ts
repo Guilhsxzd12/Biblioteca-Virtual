@@ -38,7 +38,7 @@ function score(item:BookMetadataResult,query:string){
   else if(t.includes(q))s+=55;
   else for(const part of q.split(" ").filter(x=>x.length>2))if(t.includes(part))s+=9;
   if(a&&a!=="autor nao informado")s+=8;
-  if(item.description)s+=10;
+  if(item.description)s+=16;
   if(item.coverUrl)s+=5;
   if(item.year)s+=2;
   if(item.pages)s+=2;
@@ -70,6 +70,7 @@ async function googleBooks(query:string,{ebooks=false,lang}:{ebooks?:boolean;lan
   url.searchParams.set("orderBy","relevance");
   if(ebooks)url.searchParams.set("filter","ebooks");
   if(lang)url.searchParams.set("langRestrict",lang);
+  const key=process.env.GOOGLE_BOOKS_API_KEY?.trim();if(key)url.searchParams.set("key",key);
   const r=await fetch(url,{cache:"no-store"});
   if(!r.ok)return [] as BookMetadataResult[];
   const p=await r.json();
@@ -94,16 +95,27 @@ async function googleBooks(query:string,{ebooks=false,lang}:{ebooks?:boolean;lan
   });
 }
 
+async function openLibraryDescription(workKey?:string){
+  if(!workKey||!workKey.startsWith("/works/"))return null;
+  try{
+    const r=await fetch(`https://openlibrary.org${workKey}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.4"},cache:"no-store"});if(!r.ok)return null;
+    const p=await r.json();const raw=typeof p.description==="string"?p.description:p.description?.value;
+    return cleanText(raw);
+  }catch{return null;}
+}
+
 async function openLibrary(title:string,isbn:string|null){
   const url=new URL("https://openlibrary.org/search.json");
   if(isbn)url.searchParams.set("isbn",isbn);
   else url.searchParams.set("q",title);
   url.searchParams.set("limit","35");
   url.searchParams.set("fields","key,title,author_name,first_publish_year,cover_i,number_of_pages_median,isbn,ebook_access,public_scan_b,subject,language");
-  const r=await fetch(url,{headers:{"User-Agent":"BibliotecaVirtual/1.3"},cache:"no-store"});
+  const r=await fetch(url,{headers:{"User-Agent":"BibliotecaVirtual/1.4"},cache:"no-store"});
   if(!r.ok)return [] as BookMetadataResult[];
-  const p=await r.json();
-  return (p.docs||[]).map((d:any):BookMetadataResult=>({
+  const p=await r.json();const docs=(p.docs||[]) as any[];
+  const descriptions=new Map<string,string|null>();
+  await Promise.all(docs.slice(0,8).map(async d=>{descriptions.set(d.key,await openLibraryDescription(d.key));}));
+  return docs.map((d:any):BookMetadataResult=>({
     id:`o:${d.key}:${d.language?.[0]||""}`,
     source:"open-library",
     title:d.title||title,
@@ -111,7 +123,7 @@ async function openLibrary(title:string,isbn:string|null){
     language:normalizeLanguage(d.language?.includes("por")?"por":d.language?.[0]),
     year:d.first_publish_year||null,
     pages:d.number_of_pages_median||null,
-    description:null,
+    description:descriptions.get(d.key)||null,
     coverUrl:d.cover_i?`https://covers.openlibrary.org/b/id/${d.cover_i}-L.jpg`:null,
     isbn:d.isbn?.find((x:string)=>String(x).replace(/[^0-9X]/gi,"").length===13)||d.isbn?.[0]||null,
     isEbook:Boolean(d.public_scan_b||d.ebook_access&&d.ebook_access!=="no_ebook"),
