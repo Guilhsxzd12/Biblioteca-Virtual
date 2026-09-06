@@ -18,7 +18,7 @@ export async function generateMetadata({params}:{params:Promise<{slug:string}>})
 
 export default async function BookPage({params}:{params:Promise<{slug:string}>}){
   const {slug}=await params;
-  const {supabase,user}=await requireApproved();
+  const {supabase,user,profile}=await requireApproved();
   const result=await supabase.from("books").select("*,categories(name)").eq("slug",slug).eq("published",true).maybeSingle();
   let book=result.data;
   if(!book&&/^[0-9a-f-]{36}$/i.test(slug)){
@@ -42,7 +42,7 @@ export default async function BookPage({params}:{params:Promise<{slug:string}>})
     <div className="detail-cover-col">{b.cover_url?<img className="cover" src={b.cover_url} alt={`Capa de ${b.title}`}/>:<div className="cover-fallback">{b.title}</div>}<div className="detail-small-meta">{b.categories?.name&&<span>{b.categories.name}</span>}{b.language&&<span>{b.language.toUpperCase()}</span>}</div></div>
     <div className="detail-copy"><span className="eyebrow">KINDLE BOOKS</span><h1>{b.title}</h1><h2>{b.author}</h2><div className="detail-stats">{b.year&&<div><small>ANO</small><strong>{b.year}</strong></div>}{b.pages&&<div><small>PÁGINAS</small><strong>{b.pages}</strong></div>}{b.categories?.name&&<div><small>CATEGORIA</small><strong>{b.categories.name}</strong></div>}</div>
       <div className="format-note"><strong>Escolha o formato</strong><span>PDF para leitura direta ou EPUB para Kindle e outros aplicativos compatíveis.</span></div>
-      <div className="detail-actions">{hasPdf&&<a className="btn" href={`/api/books/${b.id}/file?format=pdf`}>Baixar PDF</a>}{hasEpub&&<KindleShareButton id={b.id} title={b.title} source="catalog"/>}<FavoriteButton bookId={b.id} initial={Boolean(favorite)}/></div>
+      <div className="detail-actions">{hasPdf&&<a className="btn" href={`/api/books/${b.id}/file?format=pdf`}>Baixar PDF</a>}{hasEpub&&<KindleShareButton id={b.id} title={b.title} author={b.author} source="catalog"/>}<FavoriteButton bookId={b.id} initial={Boolean(favorite)}/>{profile.role==="admin"&&<Link className="btn ghost" href={`/admin/capas/${b.id}`}>Gerenciar capas</Link>}</div>
       {!hasPdf&&!hasEpub&&<div className="notice">Este título está temporariamente sem arquivo disponível.</div>}
       <div className="synopsis-block"><span className="eyebrow">SOBRE O LIVRO</span><div className="prose">{b.description||"Sinopse não informada."}</div></div></div>
   </section>
