@@ -56,7 +56,7 @@ export async function answerTelegramCallback(id:string,text?:string){return tele
 export async function getTelegramBot(){return telegramApi<{id:number;username?:string;first_name:string}>("getMe");}
 
 export async function setupTelegramWebhook(){
-  const url=`${getSiteOrigin()}/api/telegram/webhook`;
+  const url=`${PUBLIC_SITE_URL}/api/telegram/webhook`;
   await telegramApi("setWebhook",{url,secret_token:telegramWebhookSecret(),allowed_updates:["message","callback_query"],drop_pending_updates:false});
   await telegramApi("setMyCommands",{commands:[
     {command:"start",description:`Abrir a ${SITE_NAME}`},
