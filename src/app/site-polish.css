@@ -1,0 +1,118 @@
+/* Final layout polish: responsive admin, reliable horizontal shelves and featured book. */
+
+/* Horizontal book shelves */
+.book-slider{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  scroll-snap-type:x mandatory!important;
+  overscroll-behavior-x:contain;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-x pan-y;
+  padding-inline:2px 14px!important;
+}
+.book-slider>*{scroll-snap-align:start}
+.category-block,.library-section,.category-sections,.library-content{min-width:0;max-width:100%}
+.category-empty{padding:20px 22px;border:1px dashed #DEC8BE;border-radius:16px;background:#FFFDF9;color:#7E6570;font-size:13px}
+
+/* Featured single-book card */
+.spotlight-section{margin:0 0 66px}
+.spotlight-card{
+  display:grid;
+  grid-template-columns:minmax(150px,220px) minmax(0,1fr);
+  gap:30px;
+  align-items:center;
+  padding:28px;
+  border:1px solid #8E4864;
+  border-radius:26px;
+  background:linear-gradient(105deg,#4D0830 0%,#551839 100%);
+  color:#FEF4E0;
+  box-shadow:0 18px 42px rgba(77,8,48,.18);
+}
+.spotlight-cover{overflow:hidden;aspect-ratio:2/3;border-radius:14px;background:#F3E5DE;box-shadow:0 15px 32px rgba(28,4,17,.28)}
+.spotlight-cover img{display:block;width:100%;height:100%;object-fit:cover}
+.spotlight-copy{min-width:0}
+.spotlight-copy .eyebrow{color:#D2BAB4!important}
+.spotlight-copy h2{margin:8px 0 7px;font:700 clamp(30px,4.5vw,50px)/.98 Georgia,serif;color:#FEF4E0}
+.spotlight-copy .spotlight-meta{margin:0 0 22px;color:#D2BAB4;font-size:14px;font-weight:700}
+.spotlight-copy>strong{display:block;margin-bottom:6px;font-size:14px}
+.spotlight-copy>p:not(.spotlight-meta){max-width:670px;margin:0;color:#F1DDD5;font-size:15px;line-height:1.65}
+.spotlight-link{display:inline-flex;align-items:center;justify-content:center;min-height:42px;margin-top:20px;padding:9px 20px;border-radius:999px;background:#FEF4E0;color:#4D0830;font-size:12px;font-weight:900}
+.spotlight-link:hover{background:#FFF9ED;transform:translateY(-1px)}
+.metric-section{margin-bottom:66px}
+
+/* Admin shortcuts and library search */
+.admin-page{min-width:0;max-width:100%;overflow-x:hidden}
+.admin-page .page-head{min-width:0}
+.admin-page .page-head>div{min-width:0}
+.admin-page .page-head>.row{max-width:100%}
+.admin-book-search{display:flex;align-items:center;gap:8px;margin:4px 0 5px}
+.admin-book-search input{min-width:0;height:44px;padding-inline:14px;border-radius:999px}
+.admin-book-search .btn{flex:none}
+.admin-list-hint{margin:0 0 8px;color:#7E6570;font-size:11px}
+.admin-search-empty{min-height:155px;margin-top:8px}
+.admin-search-empty h3{font-size:21px}
+.admin-library-panel{min-width:0}
+
+@media(max-width:900px){
+  .book-slider{
+    margin-right:0!important;
+    grid-auto-columns:minmax(148px,45vw)!important;
+    gap:14px!important;
+    padding:4px 12px 16px 2px!important;
+  }
+  .category-sections{gap:48px}
+  .category-title{align-items:end}
+
+  .admin-page .page-head{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr)!important;
+    align-items:start!important;
+    gap:18px!important;
+  }
+  .admin-page .page-head>.row{
+    width:100%;
+    display:flex!important;
+    flex-wrap:nowrap!important;
+    overflow-x:auto;
+    overflow-y:hidden;
+    padding:2px 2px 8px;
+    scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;
+  }
+  .admin-page .page-head>.row::-webkit-scrollbar{display:none}
+  .admin-page .page-head>.row .btn{flex:0 0 auto;white-space:nowrap}
+  .admin-page .tabs{width:100%;max-width:100%;overflow-x:auto;padding-right:12px}
+  .admin-grid{grid-template-columns:minmax(0,1fr)!important}
+  .admin-grid>.panel{min-width:0}
+}
+
+@media(max-width:620px){
+  .spotlight-card{grid-template-columns:34% minmax(0,1fr);gap:15px;padding:17px;border-radius:20px}
+  .spotlight-cover{border-radius:10px}
+  .spotlight-copy h2{margin-top:5px;font-size:clamp(21px,6vw,29px);line-height:1.02}
+  .spotlight-copy .spotlight-meta{margin-bottom:12px;font-size:11px;line-height:1.35}
+  .spotlight-copy>strong{font-size:12px}
+  .spotlight-copy>p:not(.spotlight-meta){display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:4;font-size:11.5px;line-height:1.45}
+  .spotlight-link{min-height:34px;margin-top:12px;padding:7px 14px;font-size:10px}
+
+  .admin-page .page-head h1{font-size:clamp(40px,13vw,58px)!important;overflow-wrap:anywhere}
+  .admin-book{grid-template-columns:52px minmax(0,1fr)!important;align-items:start!important;gap:11px!important;padding:15px 0!important}
+  .admin-book img,.admin-book .mini-cover{width:52px!important;height:74px!important}
+  .admin-book>.row{grid-column:1/-1;justify-content:flex-start;margin-top:2px}
+  .admin-book>div:not(.row){padding-top:1px}
+  .admin-book>div:not(.row)>strong{font-size:15px;line-height:1.18}
+  .admin-book small{white-space:normal!important;line-height:1.35}
+  .admin-book-search{align-items:stretch}
+  .admin-book-search input{height:42px}
+}
+
+@media(max-width:420px){
+  .book-slider{grid-auto-columns:minmax(142px,47vw)!important}
+  .spotlight-card{grid-template-columns:36% minmax(0,1fr);gap:12px;padding:14px}
+  .spotlight-copy>p:not(.spotlight-meta){-webkit-line-clamp:3}
+  .admin-book-search{display:grid;grid-template-columns:1fr}
+  .admin-book-search .btn{justify-self:start}
+}
