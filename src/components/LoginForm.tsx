@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 
 function safeNext(value?:string){return value&&value.startsWith("/")&&!value.startsWith("//")?value:"/biblioteca";}
 
@@ -10,19 +9,21 @@ type ContactMode="access"|"password"|null;
 export function LoginForm({next}:{next?:string}){
   const [loading,setLoading]=useState(false);const [message,setMessage]=useState("");const [contactMode,setContactMode]=useState<ContactMode>(null);const router=useRouter();
   async function submit(formData:FormData){
-    setLoading(true);setMessage("");const supabase=createBrowserSupabaseClient();const email=String(formData.get("email")||"").trim();const password=String(formData.get("password")||"");
+    setLoading(true);setMessage("");const identifier=String(formData.get("identifier")||"").trim();const password=String(formData.get("password")||"");
     try{
-      const {error}=await supabase.auth.signInWithPassword({email,password});if(error)throw error;router.replace(safeNext(next));router.refresh();
-    }catch{setMessage("E-mail ou senha incorretos. Confira seus dados ou fale com o atendimento para recuperar o acesso.");}finally{setLoading(false);}
+      const response=await fetch("/api/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({identifier,password})});
+      const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"Não foi possível entrar.");
+      router.replace(safeNext(next));router.refresh();
+    }catch(error){setMessage(error instanceof Error?error.message:"E-mail, usuário ou senha incorretos.");}finally{setLoading(false);}
   }
   const contactTitle=contactMode==="password"?"Recuperar acesso":"Comprar acesso";
   const contactText=contactMode==="password"?"Escolha onde prefere falar para recuperar sua senha.":"Escolha onde prefere falar para comprar seu acesso ao Kindle Books.";
   return <div className="oda-login-shell">
-    <div className="oda-login-brand"><img src="/kindle-books-logo.svg" alt="KINDLE BOOKS"/></div>
+    <div className="oda-login-brand"><img src="/kindle-books-logo-footer.svg" alt="KINDLE BOOKS"/></div>
     <section className="oda-login-card">
       <div className="oda-login-intro"><h1>Bem-vindo!</h1><p>Se você ainda não possui cadastro, <button type="button" className="oda-inline-link" onClick={()=>setContactMode("access")}>clique aqui</button> e fale com o atendimento para realizar sua inscrição.</p><p>Caso já possua cadastro, faça o login abaixo.</p></div>
       <form className="oda-login-form" action={submit}>
-        <label>E-mail<input type="email" name="email" placeholder="E-mail" autoComplete="email" required/></label>
+        <label>E-mail ou nome de usuário<input type="text" name="identifier" placeholder="E-mail ou usuário" autoComplete="username" required/></label>
         <label>Senha<input type="password" name="password" placeholder="Senha" minLength={6} autoComplete="current-password" required/></label>
         <label className="oda-remember"><input type="checkbox" name="remember" defaultChecked/><span>Lembre de mim</span></label>
         <button className="oda-login-submit" disabled={loading}>{loading?"Entrando...":"Entrar"}</button>
