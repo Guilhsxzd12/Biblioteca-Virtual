@@ -1,21 +1,25 @@
-# Biblioteca Virtual
+# Estante Virtual
 
-Biblioteca privada em Next.js + Supabase + Google Drive.
+Biblioteca digital privada em Next.js + Supabase + Google Drive + Telegram.
 
 ## Recursos
 
-- Login/cadastro privado e aprovação de usuários.
-- Biblioteca, favoritos e progresso de leitura.
-- Painel administrativo de livros, categorias e usuários.
+- Login privado com contas criadas pelo administrador.
+- Catálogo, pesquisa, favoritos e downloads em PDF/EPUB.
+- URLs legíveis por título, como `/livro/a-guerra-dos-tronos`.
+- Painel administrativo de livros, categorias, usuários e pedidos.
+- Bot do Telegram para baixar livros e enviar pedidos.
 - Busca automática de metadados por título com Google Books e fallback Open Library.
 - Nome do arquivo acompanha o título em tempo real: `Crônicas de Fogo` → `Cronicas-de-Fogo.pdf`.
 - Upload resumível direto para o Google Drive.
 - Organização automática em `BIBLIOTECA VIRTUAL/A`, `B`, `C` ... `Z`.
-- PDFs continuam privados no Drive e são servidos apenas para usuários autorizados.
+- Arquivos continuam privados no Drive e são servidos apenas para assinantes autorizados.
 
 ## Produção
 
-Domínio principal atual: `https://biblioteca-virtual-cineclubs-projects.vercel.app`
+Domínio principal atual: `https://biblioteca-virtual-umber.vercel.app`
+
+Domínio personalizado reservado: `https://estantevirtual.shop` (ativar após a propagação do DNS).
 
 Páginas públicas para Google OAuth:
 - `https://biblioteca-virtual-cineclubs-projects.vercel.app/sobre`

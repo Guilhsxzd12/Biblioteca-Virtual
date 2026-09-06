@@ -1,51 +1,43 @@
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { BookCard } from "@/components/BookCard";
-import { UserBookCard } from "@/components/UserBookCard";
 import { requireApproved } from "@/lib/auth";
-import type { Book,Category,UserBook } from "@/lib/types";
+import type { Book,Category } from "@/lib/types";
 
-function norm(v:string){return v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
-function matches(q:string,title:string,author:string){if(!q)return true;const n=norm(q);return norm(title).includes(n)||norm(author||"").includes(n);}
+function norm(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
+function matches(query:string,book:Book){const q=norm(query);return norm(book.title).includes(q)||norm(book.author||"").includes(q);}
 
-export default async function LibraryPage({searchParams}:{searchParams:Promise<{q?:string}>}){
-  const {supabase}=await requireApproved();
-  const {q=""}=await searchParams;
+export default async function LibraryPage({searchParams}:{searchParams:Promise<{q?:string;categoria?:string}>}){
+  const {supabase,profile}=await requireApproved();
+  const {q="",categoria=""}=await searchParams;
   const query=q.trim();
-  const [{data:personalData},{data:baseData},{data:categoryData}]=await Promise.all([
-    supabase.from("user_books").select("*,categories(name)").order("created_at",{ascending:false}),
-    supabase.from("books").select("*,categories(name)").eq("published",true).order("title"),
+  const [{data:bookData},{data:categoryData}]=await Promise.all([
+    supabase.from("books").select("*,categories(name)").eq("published",true).order("created_at",{ascending:false}),
     supabase.from("categories").select("*").order("name")
   ]);
-  const personal=((personalData||[]) as UserBook[]).filter(b=>matches(query,b.title,b.author));
-  const base=((baseData||[]) as Book[]).filter(b=>matches(query,b.title,b.author));
+  const all=(bookData||[]) as Book[];
   const categories=(categoryData||[]) as Category[];
-  const uncategorized=base.filter(b=>!b.category_id);
-  const featured=((baseData||[]) as Book[]).filter(b=>b.cover_url).slice(0,4);
+  const selectedCategory=categories.find(c=>c.slug===categoria);
+  const filtered=all.filter(book=>(!query||matches(query,book))&&(!selectedCategory||book.category_id===selectedCategory.id));
+  const recent=all.slice(0,8);
+  const featured=all.filter(book=>book.cover_url).slice(0,4);
 
   return <AppShell><main className="library-home">
-    {!query&&<section className="library-hero shell-width">
-      <div className="hero-copy"><span className="eyebrow">SUA BIBLIOTECA, EM QUALQUER LUGAR</span><h1>Leia no site.<br/>Leve para o Kindle.</h1><p>Organize seus livros, descubra o acervo compartilhado e prepare uma versão EPUB com a capa que você escolher.</p><div className="hero-actions"><Link className="btn hero-primary" href="/kindle">+ Adicionar livro</Link><Link className="btn hero-secondary" href="/ajuda">Como funciona?</Link></div><div className="hero-stats"><div><strong>{(baseData||[]).length}</strong><span>livros no acervo</span></div><div><strong>{(personalData||[]).length}</strong><span>na sua biblioteca</span></div><div><strong>{categories.length}</strong><span>categorias</span></div></div></div>
-      <div className="hero-visual" aria-hidden="true"><div className="hero-orbit"/>{featured.slice(0,3).map((book,index)=><div className={`hero-book hero-book-${index+1}`} key={book.id}>{book.cover_url&&<img src={book.cover_url} alt=""/>}</div>)}<div className="hero-device"><span>PDF</span><b>→</b><span>EPUB</span></div></div>
+    {!query&&!selectedCategory&&<section className="editorial-hero">
+      <div className="shell-width editorial-hero-inner">
+        <div className="editorial-copy"><span className="eyebrow">OLÁ, {profile.full_name?.split(" ")[0]?.toUpperCase()||"LEITOR"}</span><h1>Histórias para todos<br/>os seus momentos.</h1><p>Explore o acervo, escolha seu próximo livro e baixe em PDF ou EPUB para ler no aplicativo que preferir.</p><form className="hero-search" action="/biblioteca"><input name="q" placeholder="Qual livro você procura?" aria-label="Pesquisar livro"/><button>Buscar</button></form><div className="hero-stats"><div><strong>{all.length}</strong><span>livros disponíveis</span></div><div><strong>{categories.length}</strong><span>categorias</span></div></div></div>
+        <div className="cover-collage" aria-label="Livros em destaque">{featured.map((book,index)=><Link href={`/livro/${book.slug}`} className={`collage-book collage-${index+1}`} key={book.id}>{book.cover_url&&<img src={book.cover_url} alt={`Capa de ${book.title}`}/>}</Link>)}</div>
+      </div>
     </section>}
 
     <div className="shell-width library-content">
-      {query&&<section className="search-result-head"><span className="eyebrow">PESQUISA</span><h1>Resultados para “{query}”</h1><p>{personal.length+base.length} resultado{personal.length+base.length===1?"":"s"} encontrado{personal.length+base.length===1?"":"s"}.</p></section>}
+      <nav className="category-strip" aria-label="Categorias"><Link className={!selectedCategory?"active":""} href="/biblioteca">Todos</Link>{categories.map(c=><Link className={selectedCategory?.id===c.id?"active":""} href={`/biblioteca?categoria=${encodeURIComponent(c.slug)}`} key={c.id}>{c.name}</Link>)}</nav>
 
-      {!query&&!!categories.length&&<nav className="category-strip" aria-label="Categorias"><span>Explorar:</span>{categories.map(c=><a href={`#categoria-${c.slug}`} key={c.id}>{c.name}</a>)}</nav>}
+      {(query||selectedCategory)&&<section className="search-result-head"><span className="eyebrow">ACERVO</span><h1>{query?`Resultados para “${query}”`:selectedCategory?.name}</h1><p>{filtered.length} {filtered.length===1?"livro encontrado":"livros encontrados"}.</p></section>}
 
-      <section className="library-section personal-section">
-        <div className="section-heading"><div><span className="eyebrow">SEUS LIVROS</span><h2>Minha Biblioteca</h2><p>Livros que você enviou e pode manter privados ou compartilhar com o catálogo.</p></div><Link className="text-link" href="/kindle">Adicionar livro <span>→</span></Link></div>
-        {personal.length?<div className="book-grid personal-grid">{personal.map(b=><UserBookCard key={b.id} book={b}/>)}</div>:<div className="empty-state"><div className="empty-icon">＋</div><h3>{query?"Nenhum livro seu corresponde à busca":"Sua estante começa aqui"}</h3><p>{query?"Tente outro título ou autor.":"Envie um PDF e nós preparamos também a versão EPUB para o Kindle."}</p>{!query&&<Link className="btn" href="/kindle">Enviar meu primeiro livro</Link>}</div>}
-      </section>
+      {!query&&!selectedCategory&&recent.length>0&&<section className="library-section"><div className="section-heading"><div><span className="eyebrow">NOVIDADES</span><h2>Adicionados recentemente</h2><p>Os últimos títulos que chegaram à estante.</p></div></div><div className="book-grid shelf-grid">{recent.map(book=><BookCard key={book.id} book={book}/>)}</div></section>}
 
-      <section className="library-section catalog-section">
-        <div className="section-heading"><div><span className="eyebrow">ACERVO COMPARTILHADO</span><h2>Acervo da Biblioteca</h2><p>Livros publicados e organizados por categoria.</p></div><span className="collection-count">{base.length} livro{base.length===1?"":"s"}</span></div>
-        {base.length?<div className="category-sections">
-          {categories.map(c=>{const items=base.filter(b=>b.category_id===c.id);if(!items.length)return null;return <section className="category-block" id={`categoria-${c.slug}`} key={c.id}><div className="category-title"><div><h3>{c.name}</h3><span>{items.length} {items.length===1?"título":"títulos"}</span></div><span className="category-line"/></div><div className="book-grid shelf-grid">{items.map(b=><BookCard key={b.id} book={b}/>)}</div></section>;})}
-          {!!uncategorized.length&&<section className="category-block"><div className="category-title"><div><h3>Outros</h3><span>{uncategorized.length} títulos</span></div><span className="category-line"/></div><div className="book-grid shelf-grid">{uncategorized.map(b=><BookCard key={b.id} book={b}/>)}</div></section>}
-        </div>:<div className="empty-state"><h3>{query?"Nenhum livro do acervo corresponde à busca":"O acervo ainda está vazio"}</h3><p>{query?"Tente pesquisar com menos palavras.":"Os livros aprovados pelo administrador aparecerão aqui."}</p></div>}
-      </section>
+      {query||selectedCategory?<section className="library-section">{filtered.length?<div className="book-grid shelf-grid">{filtered.map(book=><BookCard key={book.id} book={book}/>)}</div>:<div className="empty-state"><h3>Nenhum livro encontrado</h3><p>Tente pesquisar por uma parte do título ou pelo nome do autor.</p><Link className="btn ghost" href="/biblioteca">Voltar ao acervo</Link></div>}</section>:<div className="category-sections">{categories.map(category=>{const books=all.filter(book=>book.category_id===category.id).slice(0,8);if(!books.length)return null;return <section className="category-block" key={category.id}><div className="category-title"><div><span className="eyebrow">COLEÇÃO</span><h3>{category.name}</h3></div><Link href={`/biblioteca?categoria=${encodeURIComponent(category.slug)}`}>Ver todos <span>→</span></Link></div><div className="book-grid shelf-grid">{books.map(book=><BookCard key={book.id} book={book}/>)}</div></section>;})}</div>}
     </div>
   </main></AppShell>;
 }

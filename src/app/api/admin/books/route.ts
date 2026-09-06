@@ -1,100 +1,68 @@
 import { NextRequest,NextResponse } from "next/server";
 import { getApiViewer } from "@/lib/auth";
+import { completeBookRequest } from "@/lib/book-requests";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { driveLetter,slugifyTitle } from "@/lib/slugify";
 
-async function admin(){
-  const v=await getApiViewer();
-  return v.user&&v.profile?.role==="admin"?v:null;
-}
+async function admin(){const viewer=await getApiViewer();return viewer.user&&viewer.profile?.role==="admin"?viewer:null;}
+function isPdf(name:string,mime:string){return mime==="application/pdf"||name.toLowerCase().endsWith(".pdf");}
+function isEpub(name:string,mime:string){return mime==="application/epub+zip"||name.toLowerCase().endsWith(".epub");}
 
-async function uniqueSlug(base:string,year:number|null,driveFileId:string){
-  const db=createAdminSupabaseClient();
-  const candidates=[base,year?`${base}-${year}`:"",`${base}-${driveFileId.slice(0,8).toLowerCase()}`].filter(Boolean);
-  for(const slug of candidates){
-    const {data}=await db.from("books").select("id").eq("slug",slug).maybeSingle();
-    if(!data)return slug;
+async function uniqueSlug(title:string,excludeId?:string){
+  const db=createAdminSupabaseClient();const base=slugifyTitle(title).toLowerCase()||"livro";
+  for(let suffix=0;suffix<100;suffix++){
+    const candidate=suffix===0?base:`${base}-${suffix+1}`;
+    let query=db.from("books").select("id").eq("slug",candidate);
+    if(excludeId)query=query.neq("id",excludeId);
+    const {data}=await query.maybeSingle();if(!data)return candidate;
   }
   return `${base}-${Date.now()}`;
 }
 
+function text(value:unknown){return String(value||"").trim();}
+function optionalNumber(value:unknown){if(value===""||value===null||value===undefined)return null;const number=Number(value);return Number.isFinite(number)?number:null;}
+
+function filePatch(body:any){
+  const driveFileId=text(body.driveFileId);const fileName=text(body.fileName);const mimeType=text(body.mimeType).toLowerCase();
+  const patch:Record<string,unknown>={};
+  if(driveFileId||fileName||mimeType){if(!driveFileId||!fileName||(!isPdf(fileName,mimeType)&&!isEpub(fileName,mimeType)))throw new Error("O arquivo principal precisa ser PDF ou EPUB.");patch.drive_file_id=driveFileId;patch.file_name=fileName;patch.mime_type=isPdf(fileName,mimeType)?"application/pdf":"application/epub+zip";}
+  if("readingPdfDriveFileId" in body){const id=text(body.readingPdfDriveFileId);const name=text(body.readingPdfFileName);patch.reading_pdf_drive_file_id=id||null;patch.reading_pdf_file_name=name||null;patch.reading_pdf_generated_at=id?new Date().toISOString():null;}
+  if("epubDriveFileId" in body){const id=text(body.epubDriveFileId);const name=text(body.epubFileName);patch.kindle_drive_file_id=id||null;patch.kindle_file_name=name||null;patch.kindle_generated_at=id?new Date().toISOString():null;}
+  return patch;
+}
+
 export async function POST(request:NextRequest){
-  const v=await admin();
-  if(!v)return NextResponse.json({error:"Acesso negado."},{status:403});
-
+  const viewer=await admin();if(!viewer)return NextResponse.json({error:"Acesso negado."},{status:403});
   try{
-    const b=await request.json();
-    const title=String(b.title||"").trim();
-    const author=String(b.author||"").trim();
-    const description=String(b.description||"").trim();
-    const language=String(b.language||"").trim().toLowerCase()||null;
-    const driveFileId=String(b.driveFileId||"").trim();
-    const fileName=String(b.fileName||"").trim();
-    const requestedMime=String(b.mimeType||"").toLowerCase();
-    const readingPdfDriveFileId=String(b.readingPdfDriveFileId||"").trim();
-    const readingPdfFileName=String(b.readingPdfFileName||"").trim();
-    const isEpub=requestedMime==="application/epub+zip"||fileName.toLowerCase().endsWith(".epub");
-    const isPdfCopy=readingPdfFileName.toLowerCase().endsWith(".pdf");
+    const body=await request.json();const title=text(body.title);const author=text(body.author);const description=text(body.description);
+    if(title.length<2||author.length<2)return NextResponse.json({error:"Título e autor são obrigatórios."},{status:400});
+    const files=filePatch(body);if(!("drive_file_id" in files))return NextResponse.json({error:"Envie ao menos um arquivo PDF ou EPUB."},{status:400});
+    const coverUrl=text(body.coverUrl)||null;if(!coverUrl)return NextResponse.json({error:"Adicione a capa do livro."},{status:400});
+    const year=optionalNumber(body.year);const pages=optionalNumber(body.pages);const now=new Date().toISOString();
+    const payload={title,slug:await uniqueSlug(title),author,description:description||null,language:text(body.language).toLowerCase()||null,category_id:text(body.categoryId)||null,year,pages,cover_url:coverUrl,drive_folder_letter:driveLetter(title),allow_download:true,published:body.published!==false,updated_at:now,...files};
+    const db=createAdminSupabaseClient();const {data,error}=await db.from("books").insert(payload).select("*,categories(name)").single();
+    if(error)return NextResponse.json({error:error.message},{status:400});
+    const requestId=text(body.requestId);const notification=requestId&&data.published?await completeBookRequest(requestId,data):null;
+    return NextResponse.json({book:data,notification});
+  }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Erro ao salvar livro."},{status:400});}
+}
 
-    if(!title||!driveFileId||!fileName)return NextResponse.json({error:"Título e EPUB são obrigatórios."},{status:400});
-    if(!author)return NextResponse.json({error:"Autor é obrigatório."},{status:400});
-    if(!description)return NextResponse.json({error:"Sinopse é obrigatória."},{status:400});
-    if(!isEpub)return NextResponse.json({error:"O arquivo original precisa ser EPUB."},{status:400});
-    if(!readingPdfDriveFileId||!readingPdfFileName||!isPdfCopy)return NextResponse.json({error:"Envie também o PDF de leitura manualmente."},{status:400});
-
-    const coverUrl=String(b.coverUrl||"").trim()||null;
-    if(!coverUrl)return NextResponse.json({error:"Adicione uma capa para a versão Kindle."},{status:400});
-
-    const year=b.year?Number(b.year):null;
-    const pages=b.pages?Number(b.pages):null;
-    const baseSlug=slugifyTitle(title).toLowerCase()||"livro";
-    const slug=await uniqueSlug(baseSlug,Number.isFinite(year)?year:null,driveFileId);
-    const now=new Date().toISOString();
-
-    const payload={
-      title,
-      slug,
-      author,
-      description,
-      language,
-      category_id:b.categoryId||null,
-      year:Number.isFinite(year)?year:null,
-      pages:Number.isFinite(pages)?pages:null,
-      cover_url:coverUrl,
-      drive_file_id:driveFileId,
-      drive_folder_letter:driveLetter(title),
-      file_name:fileName,
-      mime_type:"application/epub+zip",
-      reading_pdf_drive_file_id:readingPdfDriveFileId,
-      reading_pdf_file_name:readingPdfFileName,
-      reading_pdf_generated_at:now,
-      kindle_drive_file_id:null,
-      kindle_file_name:null,
-      kindle_generated_at:null,
-      allow_download:Boolean(b.allowDownload),
-      published:b.published!==false,
-      updated_at:now
-    };
-
-    const db=createAdminSupabaseClient();
-    const {data,error}=await db.from("books").insert(payload).select("*").single();
-    if(error){
-      console.error("[admin-books] insert failed",{message:error.message,code:error.code});
-      return NextResponse.json({error:error.message},{status:400});
-    }
-    return NextResponse.json({book:data});
-  }catch(e){
-    console.error("[admin-books] unexpected failure",e instanceof Error?e.message:"unknown");
-    return NextResponse.json({error:e instanceof Error?e.message:"Erro ao salvar livro."},{status:500});
-  }
+export async function PATCH(request:NextRequest){
+  const viewer=await admin();if(!viewer)return NextResponse.json({error:"Acesso negado."},{status:403});
+  try{
+    const body=await request.json();const id=text(body.id);if(!id)return NextResponse.json({error:"Livro obrigatório."},{status:400});
+    const db=createAdminSupabaseClient();const {data:before}=await db.from("books").select("*").eq("id",id).maybeSingle();if(!before)return NextResponse.json({error:"Livro não encontrado."},{status:404});
+    const title=text(body.title)||before.title;const author=text(body.author)||before.author;const patch:Record<string,unknown>={title,author,description:text(body.description)||null,language:text(body.language).toLowerCase()||null,category_id:text(body.categoryId)||null,year:optionalNumber(body.year),pages:optionalNumber(body.pages),cover_url:text(body.coverUrl)||before.cover_url,published:body.published!==false,allow_download:true,drive_folder_letter:driveLetter(title),updated_at:new Date().toISOString(),...filePatch(body)};
+    if(title!==before.title)patch.slug=await uniqueSlug(title,id);
+    const {data,error}=await db.from("books").update(patch).eq("id",id).select("*,categories(name)").single();if(error)return NextResponse.json({error:error.message},{status:400});
+    const requestId=text(body.requestId);const notification=requestId&&data.published?await completeBookRequest(requestId,data):null;
+    return NextResponse.json({book:data,notification});
+  }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Erro ao atualizar livro."},{status:400});}
 }
 
 export async function DELETE(request:NextRequest){
-  const v=await admin();
-  if(!v)return NextResponse.json({error:"Acesso negado."},{status:403});
-  const id=request.nextUrl.searchParams.get("id");
-  if(!id)return NextResponse.json({error:"ID obrigatório."},{status:400});
-  const db=createAdminSupabaseClient();
-  const {error}=await db.from("books").delete().eq("id",id);
+  const viewer=await admin();if(!viewer)return NextResponse.json({error:"Acesso negado."},{status:403});
+  const id=request.nextUrl.searchParams.get("id");if(!id)return NextResponse.json({error:"ID obrigatório."},{status:400});
+  const db=createAdminSupabaseClient();const {error}=await db.from("books").delete().eq("id",id);
   return error?NextResponse.json({error:error.message},{status:400}):NextResponse.json({ok:true});
 }

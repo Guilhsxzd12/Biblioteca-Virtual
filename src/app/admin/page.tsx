@@ -3,18 +3,20 @@ import { AppShell } from "@/components/AppShell";
 import { AdminDashboard } from "@/components/AdminDashboard";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import type { Book,Category,Profile,UserBook } from "@/lib/types";
+import type { Book,BookRequest,Category,Profile } from "@/lib/types";
 
 export default async function AdminPage(){
   const {supabase}=await requireAdmin();
   const admin=createAdminSupabaseClient();
-  const [{data:books},{data:categories},{data:profiles},{data:userBooks}]=await Promise.all([
+  const [{data:books},{data:categories},{data:profiles},{data:requests},{data:telegram}]=await Promise.all([
     supabase.from("books").select("*,categories(name)").order("created_at",{ascending:false}),
     supabase.from("categories").select("*").order("name"),
-    supabase.from("profiles").select("id,email,full_name,role,approved").order("created_at",{ascending:false}),
-    admin.from("user_books").select("*,categories(name)").order("created_at",{ascending:false})
+    admin.from("profiles").select("id,email,full_name,role,approved").order("created_at",{ascending:false}),
+    admin.from("book_requests").select("*").order("created_at",{ascending:false}),
+    admin.from("telegram_accounts").select("user_id,username")
   ]);
   const profileMap=new Map((profiles||[]).map(p=>[p.id,p]));
-  const uploads=(userBooks||[]).map(b=>({...b,uploader_name:profileMap.get(b.user_id)?.full_name||null,uploader_email:profileMap.get(b.user_id)?.email||null})) as UserBook[];
-  return <AppShell><main className="container"><div className="page-head"><div><h1>Painel administrativo</h1><p>Gerencie livros, envios dos usuários, usuários, categorias e integrações.</p></div><Link className="btn" href="/admin/assinaturas">Assinaturas e Telegram</Link></div><div className="notice" style={{marginBottom:16}}>Os envios chegam com o <b>EPUB original</b>. Para publicar no acervo, anexe manualmente o <b>PDF de leitura</b> correspondente antes de aprovar.</div><AdminDashboard initialBooks={(books||[]) as Book[]} initialCategories={(categories||[]) as Category[]} initialProfiles={(profiles||[]) as Profile[]} initialUserBooks={uploads}/></main></AppShell>;
+  const telegramMap=new Map((telegram||[]).map(row=>[row.user_id,row.username]));
+  const requestRows=(requests||[]).map(request=>({...request,requester_name:profileMap.get(request.user_id)?.full_name||null,requester_email:profileMap.get(request.user_id)?.email||null,telegram_username:telegramMap.get(request.user_id)||null})) as BookRequest[];
+  return <AppShell><main className="container admin-page"><div className="page-head"><div><span className="eyebrow">GESTÃO DO ACERVO</span><h1>Painel administrativo</h1><p>Cadastre livros, acompanhe pedidos e gerencie os assinantes.</p></div><Link className="btn ghost" href="/admin/assinaturas">Assinaturas e Telegram</Link></div><AdminDashboard initialBooks={(books||[]) as Book[]} initialCategories={(categories||[]) as Category[]} initialProfiles={(profiles||[]) as Profile[]} initialRequests={requestRows}/></main></AppShell>;
 }

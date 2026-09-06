@@ -10,3 +10,10 @@ export function createAdminSupabaseClient() {
     global: { headers: { "x-application-name":"biblioteca-virtual-server" } }
   });
 }
+
+export function createBotAuthSupabaseClient(){
+  const url=process.env.SUPABASE_URL||process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if(!url||!publishableKey)throw new Error("Supabase Auth não configurado.");
+  return createClient(url,publishableKey,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},global:{headers:{"x-application-name":"estante-virtual-telegram-auth"}}});
+}

@@ -2,17 +2,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
+import { SITE_NAME } from "@/lib/site";
 
 function safeNext(value?:string){return value&&value.startsWith("/")&&!value.startsWith("//")?value:"/biblioteca";}
 
 export function LoginForm({next}:{next?:string}){
-  const [signup,setSignup]=useState(false);const [loading,setLoading]=useState(false);const [message,setMessage]=useState("");const router=useRouter();
+  const [loading,setLoading]=useState(false);const [message,setMessage]=useState("");const router=useRouter();
   async function submit(formData:FormData){
-    setLoading(true);setMessage("");const supabase=createBrowserSupabaseClient();const email=String(formData.get("email")||"").trim();const password=String(formData.get("password")||"");const fullName=String(formData.get("full_name")||"").trim();
+    setLoading(true);setMessage("");const supabase=createBrowserSupabaseClient();const email=String(formData.get("email")||"").trim();const password=String(formData.get("password")||"");
     try{
-      if(signup){const {error}=await supabase.auth.signUp({email,password,options:{data:{full_name:fullName}}});if(error)throw error;router.replace(next?safeNext(next):"/aguardando-aprovacao");}
-      else{const {error}=await supabase.auth.signInWithPassword({email,password});if(error)throw error;router.replace(safeNext(next));router.refresh();}
-    }catch(e){setMessage(e instanceof Error?e.message:"Erro ao entrar.");}finally{setLoading(false);}
+      const {error}=await supabase.auth.signInWithPassword({email,password});if(error)throw error;router.replace(safeNext(next));router.refresh();
+    }catch{setMessage("E-mail ou senha incorretos. Confira os dados enviados pelo administrador.");}finally{setLoading(false);}
   }
-  return <div className="auth-card"><div className="brand"><span className="brand-mark">B</span><span>Biblioteca <b>Virtual</b></span></div><h1>{signup?"Criar conta":"Bem-vindo de volta"}</h1><p className="muted">{signup?"Crie sua conta para continuar.":"Sua próxima leitura está esperando por você."}</p><form className="stack" action={submit}>{signup&&<label>Nome<input name="full_name" required/></label>}<label>E-mail<input type="email" name="email" required/></label><label>Senha<input type="password" name="password" minLength={6} required/></label><button className="btn" disabled={loading}>{loading?"Processando...":signup?"Criar conta":"Entrar na biblioteca"}</button></form>{message&&<p className="notice">{message}</p>}<button className="btn ghost" style={{marginTop:12,width:"100%"}} onClick={()=>setSignup(!signup)}>{signup?"Já tenho conta":"Primeiro acesso? Criar conta"}</button></div>;
+  return <div className="auth-card"><div className="brand"><span className="brand-mark">E</span><span>{SITE_NAME}</span></div><span className="eyebrow">ÁREA DE ASSINANTES</span><h1>Bem-vindo de volta</h1><p className="muted">Entre com o acesso fornecido após a confirmação da sua assinatura.</p><form className="stack" action={submit}><label>E-mail<input type="email" name="email" autoComplete="email" required/></label><label>Senha<input type="password" name="password" minLength={6} autoComplete="current-password" required/></label><button className="btn" disabled={loading}>{loading?"Entrando...":"Entrar na estante"}</button></form>{message&&<p className="notice">{message}</p>}<p className="auth-help">Ainda não tem acesso? Fale com o atendimento pelo bot do Telegram para conhecer a assinatura.</p></div>;
 }

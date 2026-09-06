@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "crypto";
 import { getSiteOrigin } from "@/lib/google-drive";
+import { SITE_NAME } from "@/lib/site";
 
 export const TELEGRAM_MAX_INCOMING_BYTES=20*1024*1024;
 export const TELEGRAM_MAX_OUTGOING_BYTES=50*1024*1024;
@@ -49,24 +50,32 @@ export async function setupTelegramWebhook(){
   const url=`${getSiteOrigin()}/api/telegram/webhook`;
   await telegramApi("setWebhook",{url,secret_token:telegramWebhookSecret(),allowed_updates:["message","callback_query"],drop_pending_updates:false});
   await telegramApi("setMyCommands",{commands:[
-    {command:"start",description:"Abrir a Biblioteca Virtual"},
+    {command:"start",description:`Abrir a ${SITE_NAME}`},
     {command:"menu",description:"Abrir o menu principal"},
     {command:"baixar",description:"Pesquisar e baixar um livro"},
-    {command:"enviar",description:"Enviar PDF ou EPUB para a biblioteca"},
+    {command:"pedir",description:"Pedir um livro ao acervo"},
     {command:"historico",description:"Ver livros baixados pelo bot"},
-    {command:"envios",description:"Ver e editar meus livros enviados"},
-    {command:"assinatura",description:"Consultar minha assinatura"}
+    {command:"assinatura",description:"Consultar minha assinatura"},
+    {command:"sair",description:"Sair ou trocar de conta"}
   ]});
   return {url,bot:await getTelegramBot()};
 }
 
 export function telegramMainKeyboard(){
   return {inline_keyboard:[
-    [{text:"🔎 BAIXAR",callback_data:"action_download"},{text:"➕ ENVIAR",callback_data:"action_upload"}],
-    [{text:"🕘 HISTÓRICO",callback_data:"show_history"},{text:"📤 MEUS ENVIOS",callback_data:"show_uploads"}],
+    [{text:"🔎 BAIXAR LIVRO",callback_data:"action_download"},{text:"📝 PEDIR LIVRO",callback_data:"action_request"}],
+    [{text:"🕘 HISTÓRICO",callback_data:"show_history"}],
     [{text:"💳 MINHA ASSINATURA",callback_data:"show_subscription"}],
-    [{text:"🌐 ABRIR BIBLIOTECA",url:`${getSiteOrigin()}/biblioteca`}]
+    [{text:"🌐 ABRIR ESTANTE",url:`${getSiteOrigin()}/biblioteca`}],
+    [{text:"🚪 SAIR / TROCAR CONTA",callback_data:"action_logout"}]
   ]};
+}
+
+export function telegramWelcomeKeyboard(){
+  const rows:Array<Array<Record<string,string>>> = [];
+  const url=paymentUrl();if(url)rows.push([{text:"💳 QUERO ASSINAR",url}]);
+  rows.push([{text:"🔐 JÁ TENHO ACESSO",callback_data:"action_login"}],[{text:"✅ JÁ PAGUEI",callback_data:"subscription_paid"}]);
+  return {inline_keyboard:rows};
 }
 
 export function telegramBackToMenuKeyboard(){return {inline_keyboard:[[{text:"↩️ Voltar ao menu",callback_data:"show_menu"}]]};}
@@ -75,7 +84,8 @@ export function receiptUsername(){return (process.env.PAYMENT_RECEIPT_USERNAME?.
 
 export function paymentMessage(){
   const user=receiptUsername();
-  return `📚 <b>Biblioteca Virtual</b>\n\nSua assinatura ainda não está ativa.\n\n💳 <b>Plano mensal: R$ 8,90</b>\n📅 <b>Duração: 30 dias</b>\n\n1️⃣ Faça o pagamento pelo botão abaixo.\n2️⃣ Envie o comprovante para <b>@${user}</b>.\n3️⃣ Depois da confirmação manual, seu acesso a downloads e envios será liberado por 30 dias.\n\nSe você já pagou, toque em <b>Já paguei</b>.`;
+  const details=process.env.SUBSCRIPTION_PAYMENT_DETAILS?.trim();
+  return `📚 <b>${SITE_NAME}</b>\n\nPara acessar o acervo e baixar livros, você precisa de uma assinatura ativa.\n\n💳 <b>Plano mensal: R$ 8,90</b>\n📅 <b>Duração: 30 dias</b>${details?`\n🧾 <b>Pagamento:</b> ${details}`:""}\n\n1️⃣ Faça o pagamento pelo botão abaixo.\n2️⃣ Envie o comprovante para <b>@${user}</b>.\n3️⃣ O administrador criará seu e-mail e senha.\n4️⃣ Volte ao bot, toque em <b>Já tenho acesso</b> e envie esses dados.\n\nCada conta pode ficar conectada a apenas um Telegram por vez.`;
 }
 
 export function paymentKeyboard(){
