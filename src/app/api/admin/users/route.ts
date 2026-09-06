@@ -38,14 +38,45 @@ export async function PATCH(request:NextRequest){
   const viewer=await requireApiAdmin();if(!viewer)return NextResponse.json({error:"Acesso negado."},{status:403});
   try{
     const body=await request.json();const id=String(body.id||"").trim();if(!id)return NextResponse.json({error:"Usuário obrigatório."},{status:400});
-    const admin=createAdminSupabaseClient();const profilePatch:Record<string,unknown>={updated_at:new Date().toISOString()};
+    const admin=createAdminSupabaseClient();
+    const {data:current,error:currentError}=await admin.from("profiles").select("id,email,full_name,username,role,approved").eq("id",id).maybeSingle();
+    if(currentError||!current)return NextResponse.json({error:currentError?.message||"Usuário não encontrado."},{status:404});
+    if(current.role==="admin"&&id!==viewer.user.id)return NextResponse.json({error:"Outro administrador não pode ser alterado por esta tela."},{status:403});
+
+    const profilePatch:Record<string,unknown>={updated_at:new Date().toISOString()};
+    const authPatch:Record<string,unknown>={};
+    const metadata={full_name:current.full_name||"",username:current.username||""};
+
     if(typeof body.approved==="boolean")profilePatch.approved=body.approved;
     if(body.role==="admin"||body.role==="reader")profilePatch.role=body.role;
-    if(typeof body.fullName==="string"&&body.fullName.trim())profilePatch.full_name=body.fullName.trim();
-    if(typeof body.username==="string"&&body.username.trim())profilePatch.username=await uniqueUsername(admin,body.username.trim(),id);
+    if(typeof body.fullName==="string"&&body.fullName.trim()){const value=body.fullName.trim();profilePatch.full_name=value;metadata.full_name=value;}
+    if(typeof body.username==="string"&&body.username.trim()){
+      const username=await uniqueUsername(admin,body.username.trim(),id);profilePatch.username=username;metadata.username=username;
+    }
+    if(typeof body.email==="string"){
+      const email=body.email.trim().toLowerCase();
+      if(!/^\S+@\S+\.\S+$/.test(email))return NextResponse.json({error:"Informe um e-mail válido."},{status:400});
+      if(email!==String(current.email||"").toLowerCase()){profilePatch.email=email;authPatch.email=email;authPatch.email_confirm=true;}
+    }
+    if(typeof body.password==="string"&&body.password){if(body.password.length<8)return NextResponse.json({error:"A nova senha precisa ter pelo menos 8 caracteres."},{status:400});authPatch.password=body.password;}
+    authPatch.user_metadata=metadata;
+
+    if(Object.keys(authPatch).length){const {error}=await admin.auth.admin.updateUserById(id,authPatch);if(error)throw error;}
     if(Object.keys(profilePatch).length>1){const {error}=await admin.from("profiles").update(profilePatch).eq("id",id);if(error)throw error;}
-    if(typeof body.password==="string"&&body.password){if(body.password.length<8)return NextResponse.json({error:"A nova senha precisa ter pelo menos 8 caracteres."},{status:400});const {error}=await admin.auth.admin.updateUserById(id,{password:body.password});if(error)throw error;}
-    const {data:profile}=await admin.from("profiles").select("id,email,full_name,username,role,approved").eq("id",id).single();
+    const {data:profile,error:profileError}=await admin.from("profiles").select("id,email,full_name,username,role,approved").eq("id",id).single();if(profileError)throw profileError;
     return NextResponse.json({profile});
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Erro ao atualizar usuário."},{status:400});}
+}
+
+export async function DELETE(request:NextRequest){
+  const viewer=await requireApiAdmin();if(!viewer)return NextResponse.json({error:"Acesso negado."},{status:403});
+  try{
+    const body=await request.json().catch(()=>({}));const id=String(body.id||"").trim();if(!id)return NextResponse.json({error:"Usuário obrigatório."},{status:400});
+    if(id===viewer.user.id)return NextResponse.json({error:"Você não pode remover a própria conta administrativa."},{status:400});
+    const admin=createAdminSupabaseClient();const {data:profile,error:profileError}=await admin.from("profiles").select("role,full_name,email").eq("id",id).maybeSingle();
+    if(profileError)throw profileError;if(!profile)return NextResponse.json({error:"Usuário não encontrado."},{status:404});
+    if(profile.role==="admin")return NextResponse.json({error:"Contas administrativas não podem ser removidas por esta tela."},{status:403});
+    const {error}=await admin.auth.admin.deleteUser(id);if(error)throw error;
+    return NextResponse.json({ok:true});
+  }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Erro ao remover usuário."},{status:400});}
 }
