@@ -9,6 +9,10 @@ input,textarea,select,button{min-width:0}
 .meta,.muted,p,small,strong,h1,h2,h3{overflow-wrap:anywhere}
 .tabs{-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
 
+/* Login accepts username as text, so keep it visually identical to the old e-mail field. */
+.oda-login-form input[type="text"]{height:56px;padding:0 17px;border:2px solid #e6e9ed;border-radius:18px;background:#fff;color:#252933;font-size:16px;box-shadow:none}
+.oda-login-form input[type="text"]:focus{border-color:#a8b9cd;box-shadow:0 0 0 4px rgba(39,117,180,.07)}
+
 /* Subscription / user administration */
 .subscriptions-admin{display:grid;gap:18px;width:100%}
 .telegram-admin-card,.subscriptions-panel{overflow:hidden}
@@ -42,6 +46,7 @@ input,textarea,select,button{min-width:0}
 
 @media(max-width:900px){
   .container,.shell-width{max-width:calc(100% - 28px)}
+  .header-capsule.shell-width{width:100%!important;max-width:100%!important}
   .page-head{display:grid!important;grid-template-columns:minmax(0,1fr)!important;align-items:start!important;gap:16px!important}
   .page-head>.row{width:100%;max-width:100%}
   .admin-page>.page-head>.row{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px!important}
@@ -56,6 +61,7 @@ input,textarea,select,button{min-width:0}
 @media(max-width:620px){
   body{padding-bottom:max(22px,env(safe-area-inset-bottom))}
   .container,.shell-width{width:calc(100% - 24px)!important;max-width:calc(100% - 24px)!important}
+  .header-capsule.shell-width{width:100%!important;max-width:100%!important}
   .container{margin-top:22px}
   .panel{padding:17px!important}
   .page-head{margin-bottom:20px!important}.page-head h1{font-size:clamp(34px,10vw,46px)!important}.page-head p{font-size:14px;line-height:1.45}
@@ -78,6 +84,8 @@ input,textarea,select,button{min-width:0}
   .cover-picker,.language-picker,.oda-contact-modal{max-width:calc(100vw - 24px)!important}
   .detail-stats{width:100%;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
   .footer-main,.footer-bottom>div{max-width:100%}
+  .oda-login-form input[type="text"]{height:54px;border-radius:16px}
+  .floating-contact{right:10px!important;bottom:max(84px,calc(env(safe-area-inset-bottom) + 70px))!important;gap:8px!important}.contact-bubble{width:44px!important;height:44px!important}.contact-bubble svg{width:23px!important;height:23px!important}
 }
 
 @media(max-width:390px){
