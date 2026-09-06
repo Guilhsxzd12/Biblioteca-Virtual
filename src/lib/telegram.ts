@@ -6,6 +6,7 @@ import { SITE_NAME } from "@/lib/site";
 export const TELEGRAM_MAX_INCOMING_BYTES=20*1024*1024;
 export const TELEGRAM_MAX_OUTGOING_BYTES=50*1024*1024;
 export const PUBLIC_SITE_URL="https://estantevirtual.shop";
+export function telegramWebhookUrl(){return process.env.TELEGRAM_WEBHOOK_URL?.trim()||"https://biblioteca-virtual-umber.vercel.app/api/telegram/webhook";}
 
 export type TelegramWebhookInfo={
   url:string;
@@ -77,7 +78,7 @@ export async function getTelegramBot(){return telegramApi<{id:number;username?:s
 export async function getTelegramWebhookInfo(){return telegramApi<TelegramWebhookInfo>("getWebhookInfo");}
 
 export async function setupTelegramWebhook(){
-  const url=`${PUBLIC_SITE_URL}/api/telegram/webhook`;
+  const url=telegramWebhookUrl();
   await telegramApi("setWebhook",{
     url,
     secret_token:telegramWebhookSecret(),
