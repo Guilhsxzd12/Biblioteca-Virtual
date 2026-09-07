@@ -42,7 +42,7 @@ export async function POST(request:NextRequest){
     if(!("drive_file_id" in files)||!isEpub(mainName,mainMime)||!pdfId||!isPdf(pdfName,"application/pdf"))return NextResponse.json({error:"Para cadastrar um novo livro, envie obrigatoriamente os dois arquivos: EPUB e PDF."},{status:400});
     const coverUrl=text(body.coverUrl)||null;
     const year=optionalNumber(body.year);const pages=optionalNumber(body.pages);const now=new Date().toISOString();
-    const payload={title,slug:await uniqueSlug(title),author,description:description||null,language:text(body.language).toLowerCase()||null,category_id:text(body.categoryId)||null,year,pages,cover_url:coverUrl,drive_folder_letter:driveLetter(title),allow_download:true,published:body.published!==false,updated_at:now,...files};
+    const payload={title,slug:await uniqueSlug(title),author,description:description||null,language:text(body.language).toLowerCase()||null,category_id:text(body.categoryId)||null,year,pages,cover_url:coverUrl,drive_folder_letter:driveLetter(title),allow_download:true,published:body.published!==false,updated_at:now,metadata_reviewed:body.metadataReviewed!==false,...files};
     const db=createAdminSupabaseClient();const {data,error}=await db.from("books").insert(payload).select("*,categories(name)").single();
     if(error)return NextResponse.json({error:error.message},{status:400});
     const requestId=text(body.requestId);const notification=requestId&&data.published?await completeBookRequest(requestId,data):null;
@@ -55,7 +55,24 @@ export async function PATCH(request:NextRequest){
   try{
     const body=await request.json();const id=text(body.id);if(!id)return NextResponse.json({error:"Livro obrigatório."},{status:400});
     const db=createAdminSupabaseClient();const {data:before}=await db.from("books").select("*").eq("id",id).maybeSingle();if(!before)return NextResponse.json({error:"Livro não encontrado."},{status:404});
-    const title=text(body.title)||before.title;const author=text(body.author)||before.author;const patch:Record<string,unknown>={title,author,description:text(body.description)||null,language:text(body.language).toLowerCase()||null,category_id:text(body.categoryId)||null,year:optionalNumber(body.year),pages:optionalNumber(body.pages),cover_url:"coverUrl" in body?(text(body.coverUrl)||null):before.cover_url,published:body.published!==false,allow_download:true,drive_folder_letter:driveLetter(title),updated_at:new Date().toISOString(),...filePatch(body)};
+    const title="title" in body?(text(body.title)||before.title):before.title;
+    const author="author" in body?(text(body.author)||before.author):before.author;
+    const patch:Record<string,unknown>={
+      title,
+      author,
+      description:"description" in body?(text(body.description)||null):before.description,
+      language:"language" in body?(text(body.language).toLowerCase()||null):before.language,
+      category_id:"categoryId" in body?(text(body.categoryId)||null):before.category_id,
+      year:"year" in body?optionalNumber(body.year):before.year,
+      pages:"pages" in body?optionalNumber(body.pages):before.pages,
+      cover_url:"coverUrl" in body?(text(body.coverUrl)||null):before.cover_url,
+      published:"published" in body?body.published!==false:before.published,
+      allow_download:true,
+      drive_folder_letter:driveLetter(title),
+      metadata_reviewed:"metadataReviewed" in body?body.metadataReviewed===true:before.metadata_reviewed,
+      updated_at:new Date().toISOString(),
+      ...filePatch(body)
+    };
     if(title!==before.title)patch.slug=await uniqueSlug(title,id);
     const {data,error}=await db.from("books").update(patch).eq("id",id).select("*,categories(name)").single();if(error)return NextResponse.json({error:error.message},{status:400});
     const requestId=text(body.requestId);const notification=requestId&&data.published?await completeBookRequest(requestId,data):null;
