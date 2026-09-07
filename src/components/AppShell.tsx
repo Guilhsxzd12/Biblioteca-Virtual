@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireApproved } from "@/lib/auth";
-import { SignOutButton } from "@/components/SignOutButton";
+import { AccountMenu } from "@/components/AccountMenu";
 import { SiteFooter } from "@/components/SiteFooter";
 import type { Category } from "@/lib/types";
 
@@ -45,7 +45,7 @@ export async function AppShell({children}:{children:React.ReactNode}){
 
         <form className="header-search store-search capsule-search" action="/biblioteca" method="get"><Icon name="search"/><input name="q" placeholder="Livro ou autor..." aria-label="Pesquisar livros"/><button type="submit">Buscar</button></form>
         <Link className="header-request-btn capsule-request" href="/pedido"><Icon name="request"/>Pedir livro</Link>
-        <div className="user-pill capsule-user"><span>{profile.full_name||profile.email}</span><SignOutButton/></div>
+        <AccountMenu fullName={profile.full_name} email={profile.email} username={profile.username}/>
 
         <details className="capsule-mobile-menu">
           <summary aria-label="Abrir menu"><Icon name="menu"/></summary>
@@ -58,6 +58,7 @@ export async function AppShell({children}:{children:React.ReactNode}){
               <Link href="/biblioteca#novidades">Novidades</Link>
               <Link href="/favoritos">Favoritos</Link>
               <Link href="/ajuda">Ajuda</Link>
+              <Link href="/minha-conta">Minha conta</Link>
               {admin&&<Link href="/admin">Admin</Link>}
               <Link className="mobile-request-link" href="/pedido"><Icon name="request"/>Pedir livro</Link>
             </nav>
