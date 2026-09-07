@@ -16,11 +16,13 @@ function cleanText(v?:string|null){
     .replace(/&nbsp;/gi," ")
     .replace(/&amp;/gi,"&")
     .replace(/&quot;/gi,'"')
-    .replace(/&#39;/gi,"'")
+    .replace(/&#39;|&apos;/gi,"'")
     .replace(/&aacute;/gi,"á").replace(/&atilde;/gi,"ã").replace(/&acirc;/gi,"â")
     .replace(/&eacute;/gi,"é").replace(/&ecirc;/gi,"ê").replace(/&iacute;/gi,"í")
     .replace(/&oacute;/gi,"ó").replace(/&otilde;/gi,"õ").replace(/&ocirc;/gi,"ô")
     .replace(/&uacute;/gi,"ú").replace(/&ccedil;/gi,"ç")
+    .replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16)))
     .replace(/\s+/g," ")
     .trim()||null;
 }
@@ -116,7 +118,7 @@ async function googleBooks(query:string,{ebooks=false,lang}:{ebooks?:boolean;lan
 async function openLibraryDescription(workKey?:string){
   if(!workKey||!workKey.startsWith("/works/"))return null;
   try{
-    const r=await fetch(`https://openlibrary.org${workKey}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.5"},cache:"no-store"});if(!r.ok)return null;
+    const r=await fetch(`https://openlibrary.org${workKey}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.6"},cache:"no-store"});if(!r.ok)return null;
     const p=await r.json();const raw=typeof p.description==="string"?p.description:p.description?.value;
     return cleanText(raw);
   }catch{return null;}
@@ -129,7 +131,7 @@ async function openLibrarySearch(title:string,isbn:string|null,exactTitle=false)
   else url.searchParams.set("q",title);
   url.searchParams.set("limit","35");
   url.searchParams.set("fields","key,title,author_name,first_publish_year,cover_i,number_of_pages_median,isbn,ebook_access,public_scan_b,subject,language");
-  const r=await fetch(url,{headers:{"User-Agent":"BibliotecaVirtual/1.5"},cache:"no-store"});
+  const r=await fetch(url,{headers:{"User-Agent":"BibliotecaVirtual/1.6"},cache:"no-store"});
   if(!r.ok)return [] as BookMetadataResult[];
   const p=await r.json();const docs=(p.docs||[]) as any[];
   const descriptions=new Map<string,string|null>();
@@ -152,11 +154,11 @@ async function openLibrarySearch(title:string,isbn:string|null,exactTitle=false)
 
 async function openLibraryByIsbn(isbn:string){
   try{
-    const editionResponse=await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.5"},cache:"no-store"});
+    const editionResponse=await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.6"},cache:"no-store"});
     if(!editionResponse.ok)return [] as BookMetadataResult[];
     const edition=await editionResponse.json();
     const authors=await Promise.all((edition.authors||[]).slice(0,6).map(async (author:any)=>{
-      try{const r=await fetch(`https://openlibrary.org${author.key}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.5"},cache:"no-store"});if(!r.ok)return null;const p=await r.json();return p.name||null;}catch{return null;}
+      try{const r=await fetch(`https://openlibrary.org${author.key}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.6"},cache:"no-store"});if(!r.ok)return null;const p=await r.json();return p.name||null;}catch{return null;}
     }));
     const workKey=edition.works?.[0]?.key;const description=await openLibraryDescription(workKey);
     const coverId=edition.covers?.[0];
@@ -188,22 +190,57 @@ function htmlMeta(html:string,key:string){
   return null;
 }
 
+function encodingPenalty(value:string){
+  const replacement=(value.match(/�/g)||[]).length;
+  const mojibake=(value.match(/(?:Ã.|Â.|â€|â€™|â€œ|â€�|ðŸ)/g)||[]).length;
+  return replacement*100+mojibake*20;
+}
+
+async function responseHtml(response:Response){
+  const bytes=new Uint8Array(await response.arrayBuffer());
+  const declared=response.headers.get("content-type")?.match(/charset\s*=\s*([^;\s]+)/i)?.[1]?.replace(/["']/g,"");
+  const encodings=Array.from(new Set([declared,"utf-8","windows-1252","iso-8859-1"].filter(Boolean) as string[]));
+  const decoded=encodings.map(encoding=>{try{return new TextDecoder(encoding,{fatal:false}).decode(bytes);}catch{return "";}}).filter(Boolean);
+  return decoded.sort((a,b)=>encodingPenalty(a)-encodingPenalty(b))[0]||new TextDecoder("utf-8").decode(bytes);
+}
+
+function usefulPublisherDescription(value?:string|null){
+  const text=cleanText(value);if(!text||text.length<80)return null;
+  const generic=/40 anos de respeito|conhe[cç]a o nosso cat[aá]logo|grupo companhia das letras|livros para todos os leitores/i;
+  return generic.test(text)?null:text;
+}
+
+function publisherAboutText(plain:string){
+  const match=plain.match(/SOBRE O LIVRO\s+([\s\S]{80,5000}?)\s+Ficha T[eé]cnica/i);
+  return usefulPublisherDescription(match?.[1]);
+}
+
 async function companhiaByIsbn(isbn:string){
   try{
-    const response=await fetch(`https://www.companhiadasletras.com.br/livro/${encodeURIComponent(isbn)}/`,{headers:{"User-Agent":"Mozilla/5.0 BibliotecaVirtual/1.5","Accept":"text/html,application/xhtml+xml"},cache:"no-store",redirect:"follow"});
+    const response=await fetch(`https://www.companhiadasletras.com.br/livro/${encodeURIComponent(isbn)}/`,{headers:{"User-Agent":"Mozilla/5.0 BibliotecaVirtual/1.6","Accept":"text/html,application/xhtml+xml"},cache:"no-store",redirect:"follow"});
     if(!response.ok)return [] as BookMetadataResult[];
-    const html=await response.text();const plain=cleanText(html)||"";
-    if(!plain.includes(isbn)&&!plain.includes(isbn.replace(/(\d{3})(\d{2})(\d{3})(\d{4})(\d)/,"$1-$2-$3-$4-$5")))return [] as BookMetadataResult[];
-    const documentTitle=cleanText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1])||htmlMeta(html,"og:title")||"";
-    const title=(cleanText(html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1])||documentTitle.split(" - ")[0]||"").trim();
-    const titleParts=documentTitle.split(" - ").map(part=>part.trim()).filter(Boolean);
+    const html=await responseHtml(response);const plain=cleanText(html)||"";
+    const formatted=isbn.replace(/(\d{3})(\d{2})(\d{3})(\d{4})(\d)/,"$1-$2-$3-$4-$5");
+    if(!plain.includes(isbn)&&!plain.includes(formatted))return [] as BookMetadataResult[];
+
+    const rawDocumentTitle=cleanText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1])||"";
+    const ogTitle=htmlMeta(html,"og:title")||"";
+    const h1=cleanText(html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1])||"";
+    const titleCandidates=[rawDocumentTitle.split(" - ")[0],ogTitle.split(" - ")[0],h1]
+      .map(item=>cleanText(item)||"")
+      .filter(item=>item.length>1)
+      .sort((a,b)=>encodingPenalty(a)-encodingPenalty(b));
+    const title=titleCandidates[0]||"";
+
+    const titleParts=rawDocumentTitle.split(" - ").map(part=>cleanText(part)||"").filter(Boolean);
     let author=titleParts.length>=3?titleParts.slice(1,-1).join(" - "):"Autor não informado";
     author=author.replace(/\s+\|\s+Grupo Companhia das Letras.*$/i,"").trim()||"Autor não informado";
+
     const pagesMatch=plain.match(/P[aá]ginas\s*:?\s*(\d{1,5})/i);
     const launchMatch=plain.match(/Lan[cç]amento\s*:?\s*\d{1,2}\/\d{1,2}\/(\d{4})/i)||plain.match(/Ano(?: de edi[cç][aã]o)?\s*:?\s*(20\d{2}|19\d{2})/i);
-    const description=htmlMeta(html,"description")||htmlMeta(html,"og:description");
+    const description=publisherAboutText(plain)||usefulPublisherDescription(htmlMeta(html,"og:description"))||usefulPublisherDescription(htmlMeta(html,"description"));
     const coverUrl=htmlMeta(html,"og:image");
-    if(!title)return [] as BookMetadataResult[];
+    if(!title||encodingPenalty(title)>=100)return [] as BookMetadataResult[];
     return [{id:`publisher:companhia:${isbn}`,source:"publisher",title,author,language:"pt",year:launchMatch?Number(launchMatch[1]):null,pages:pagesMatch?Number(pagesMatch[1]):null,description,coverUrl,isbn,isEbook:true,categories:["Fantasia"]} satisfies BookMetadataResult];
   }catch{return [] as BookMetadataResult[];}
 }
