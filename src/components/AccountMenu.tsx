@@ -12,7 +12,7 @@ function LogoutIcon(){return <svg viewBox="0 0 24 24" aria-hidden="true"><path d
 export function AccountMenu({fullName,email,username}:AccountMenuProps){
   const router=useRouter();
   async function signOut(){
-    await createBrowserSupabaseClient().auth.signOut();
+    await createBrowserSupabaseClient().auth.signOut({scope:"local"});
     router.replace("/login");
     router.refresh();
   }
