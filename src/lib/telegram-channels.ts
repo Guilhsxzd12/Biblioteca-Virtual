@@ -86,7 +86,7 @@ async function readDriveBytes(fileId:string){
 function extractFileId(message:unknown){return (message as TelegramMessage|undefined)?.document?.file_id||null;}
 function extractMessageId(message:unknown){return (message as TelegramMessage|undefined)?.message_id||null;}
 
-export async function publishBookToTelegramChannels(bookId:string){
+export async function publishBookToTelegramChannels(bookId:string,force=false){
   const db=createAdminSupabaseClient();
   const [{data:book,error:bookError},{data:channels,error:channelError}]=await Promise.all([
     db.from("books").select("*").eq("id",bookId).maybeSingle(),
@@ -108,7 +108,7 @@ export async function publishBookToTelegramChannels(bookId:string){
 
   for(const channel of channels){
     const {data:previous}=await db.from("telegram_channel_publications").select("*").eq("book_id",book.id).eq("channel_id",channel.id).maybeSingle();
-    if(previous?.status==="sent"){results.push({channel:channel.title||String(channel.chat_id),role:channel.role,status:"already-sent"});continue;}
+    if(previous?.status==="sent"&&!force){results.push({channel:channel.title||String(channel.chat_id),role:channel.role,status:"already-sent"});continue;}
     await db.from("telegram_channel_publications").upsert({book_id:book.id,channel_id:channel.id,status:"pending",last_error:null,updated_at:new Date().toISOString()},{onConflict:"book_id,channel_id"});
     let epubMessageId:number|null=null,pdfMessageId:number|null=null;const errors:string[]=[];
     try{

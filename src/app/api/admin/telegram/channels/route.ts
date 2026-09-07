@@ -25,7 +25,7 @@ export async function POST(request:NextRequest){
     const action=String(body.action||"");
     if(action==="publish_book"){
       const bookId=String(body.bookId||"").trim();if(!bookId)return NextResponse.json({error:"Livro obrigatório."},{status:400});
-      const result=await publishBookToTelegramChannels(bookId);return NextResponse.json({ok:true,...result});
+      const result=await publishBookToTelegramChannels(bookId,body.force===true);return NextResponse.json({ok:true,...result});
     }
     if(action==="welcome"){
       const result=await resendWelcomeToTelegramChannels();return NextResponse.json({ok:true,channels:result});
