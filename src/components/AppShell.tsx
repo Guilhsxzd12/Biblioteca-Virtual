@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getViewer,requireApproved } from "@/lib/auth";
 import { AccountMenu } from "@/components/AccountMenu";
+import { NavigationProgress } from "@/components/HorizontalBookSlider";
 import { SiteFooter } from "@/components/SiteFooter";
 import type { Category,Profile } from "@/lib/types";
 
@@ -33,14 +34,21 @@ export async function AppShell({children,allowInactive=false}:{children:React.Re
   const authorLinks=authors.map(author=><Link key={author} href={`/biblioteca?autor=${encodeURIComponent(author)}`}>{author}</Link>);
 
   return <div className="app-shell">
+    <NavigationProgress/>
     <header className="app-header store-header capsule-store-header">
       <div className="header-capsule shell-width">
         <Link className="brand brand-logo capsule-brand" href="/biblioteca" aria-label="Kindle Books — início"><img src="/kindle-books-logo-light.svg" alt="KINDLE BOOKS"/></Link>
 
         <nav className="header-nav capsule-nav" aria-label="Navegação do catálogo">
           <Link href="/biblioteca">Início</Link>
-          <details className="nav-dropdown capsule-dropdown"><summary>Categorias <Icon name="chevron"/></summary><div className="nav-dropdown-menu capsule-dropdown-menu"><span className="dropdown-kicker">Explore por categoria</span><div className="dropdown-link-grid">{categoryLinks}</div><Link className="dropdown-see-all" href="/biblioteca">Ver todo o acervo →</Link></div></details>
-          <details className="nav-dropdown capsule-dropdown"><summary>Autores <Icon name="chevron"/></summary><div className="nav-dropdown-menu capsule-dropdown-menu authors-menu"><span className="dropdown-kicker">Autores do acervo</span><div className="dropdown-link-grid">{authorLinks}</div><Link className="dropdown-see-all" href="/biblioteca">Ver todos os livros →</Link></div></details>
+          <div className="nav-dropdown capsule-dropdown">
+            <button className="capsule-dropdown-trigger" type="button" aria-haspopup="true">Categorias <Icon name="chevron"/></button>
+            <div className="nav-dropdown-menu capsule-dropdown-menu categories-menu"><span className="dropdown-kicker">Explore por categoria</span><div className="dropdown-link-grid">{categoryLinks}</div><Link className="dropdown-see-all" href="/biblioteca">Ver todo o acervo →</Link></div>
+          </div>
+          <div className="nav-dropdown capsule-dropdown">
+            <button className="capsule-dropdown-trigger" type="button" aria-haspopup="true">Autores <Icon name="chevron"/></button>
+            <div className="nav-dropdown-menu capsule-dropdown-menu authors-menu"><span className="dropdown-kicker">Autores do acervo</span><div className="dropdown-link-grid">{authorLinks}</div><Link className="dropdown-see-all" href="/biblioteca">Ver todos os livros →</Link></div>
+          </div>
           <Link href="/biblioteca#novidades">Novidades</Link>
           <Link href="/favoritos">Favoritos</Link>
           <Link href="/ajuda">Ajuda</Link>
