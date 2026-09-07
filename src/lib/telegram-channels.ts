@@ -15,6 +15,7 @@ type TelegramMessage={message_id?:number;document?:{file_id?:string}};
 
 function escapeHtml(value:unknown){return String(value??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;");}
 function normalize(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
+function isPortuguese(value:unknown){const language=normalize(String(value??"").trim());return language==="pt"||language==="pt-br"||language==="pt_br"||language==="portugues"||language.startsWith("pt-");}
 function isPublicationChat(type?:string){return !type||type==="channel"||type==="supergroup";}
 function telegramFileName(title:string,author:string,extension:"epub"|"pdf"){
   const base=`${title} - ${author}`.replace(/[\\/:*?"<>|]+/g,"-").replace(/\s+/g," ").trim().slice(0,180)||"Kindle Books";
@@ -30,7 +31,7 @@ function bookPdf(book:any){
 }
 
 export function telegramChannelWelcomeText(){
-  return `📚 <b>Kindle Books conectado!</b>\n\nEste canal foi reconhecido pelo bot e está pronto para receber os novos livros publicados no acervo.\n\n📱 EPUB para Kindle e aplicativos compatíveis.\n📄 PDF para celular, tablet ou computador.\n\n🌐 <a href="${PUBLIC_SITE_URL}/biblioteca">Acessar o Kindle Books</a>\n\nBoa leitura! 🤍`;
+  return `📚 <b>Kindle Books conectado!</b>\n\nEste canal foi reconhecido pelo bot e está pronto para receber os novos livros publicados no acervo.\n\n📚 Os canais recebem somente livros em português.\n📱 EPUB para Kindle e aplicativos compatíveis.\n📄 PDF para celular, tablet ou computador.\n\n🌐 <a href="${PUBLIC_SITE_URL}/biblioteca">Acessar o Kindle Books</a>\n\nBoa leitura! 🤍`;
 }
 
 async function nextRole(title:string):Promise<ChannelRole|null>{
@@ -94,6 +95,7 @@ export async function publishBookToTelegramChannels(bookId:string){
   if(bookError||!book)throw new Error(bookError?.message||"Livro não encontrado.");
   if(channelError)throw new Error(channelError.message);
   if(!channels?.length)throw new Error("Os canais do Telegram ainda não foram detectados pelo bot.");
+  if(!isPortuguese(book.language))throw new Error("Somente livros em português são enviados automaticamente aos canais do Telegram. As outras versões ficam disponíveis no site e no bot sob demanda.");
 
   const epub=bookEpub(book);const pdf=bookPdf(book);
   if(!epub.id&&!pdf.id)throw new Error("O livro não possui EPUB ou PDF disponível para o Telegram.");
