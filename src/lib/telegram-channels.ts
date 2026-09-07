@@ -108,11 +108,20 @@ export async function publishBookToTelegramChannels(bookId:string,force=false){
 
   for(const channel of channels){
     const {data:previous}=await db.from("telegram_channel_publications").select("*").eq("book_id",book.id).eq("channel_id",channel.id).maybeSingle();
-    if(previous?.status==="sent"&&!force){results.push({channel:channel.title||String(channel.chat_id),role:channel.role,status:"already-sent"});continue;}
+    const needEpub=Boolean(epub.id)&&(force||!previous?.epub_message_id);
+    const needPdf=Boolean(pdf.id)&&(force||!previous?.pdf_message_id);
+    if(!needEpub&&!needPdf&&!force){
+      results.push({channel:channel.title||String(channel.chat_id),role:channel.role,status:"already-sent"});
+      continue;
+    }
+
     await db.from("telegram_channel_publications").upsert({book_id:book.id,channel_id:channel.id,status:"pending",last_error:null,updated_at:new Date().toISOString()},{onConflict:"book_id,channel_id"});
-    let textMessageId:number|null=null,epubMessageId:number|null=null,pdfMessageId:number|null=null;const errors:string[]=[];
+    let textMessageId:number|null=force?null:(previous?.text_message_id||null);
+    let epubMessageId:number|null=force?null:(previous?.epub_message_id||null);
+    let pdfMessageId:number|null=force?null:(previous?.pdf_message_id||null);
+    const errors:string[]=[];
     try{
-      if(epub.id){
+      if(needEpub&&epub.id){
         try{
           const sent=cachedTelegramFileIds.epub
             ? await sendTelegramDocumentByFileId(channel.chat_id,cachedTelegramFileIds.epub,caption)
@@ -120,7 +129,7 @@ export async function publishBookToTelegramChannels(bookId:string,force=false){
           epubMessageId=extractMessageId(sent);const fileId=extractFileId(sent);if(fileId)cachedTelegramFileIds.epub=fileId;
         }catch(error){errors.push(`EPUB: ${error instanceof Error?error.message:"falha no envio"}`);}
       }
-      if(pdf.id){
+      if(needPdf&&pdf.id){
         try{
           const sent=cachedTelegramFileIds.pdf
             ? await sendTelegramDocumentByFileId(channel.chat_id,cachedTelegramFileIds.pdf,caption)
@@ -135,11 +144,11 @@ export async function publishBookToTelegramChannels(bookId:string,force=false){
         textMessageId=extractMessageId(fallback);
       }
       const status=textMessageId||(sent===expected&&expected>0)?"sent":sent>0?"partial":"failed";
-      await db.from("telegram_channel_publications").upsert({book_id:book.id,channel_id:channel.id,status,text_message_id:textMessageId,epub_message_id:epubMessageId,pdf_message_id:pdfMessageId,last_error:errors.join(" | ")||null,sent_at:textMessageId||sent?new Date().toISOString():null,updated_at:new Date().toISOString()},{onConflict:"book_id,channel_id"});
+      await db.from("telegram_channel_publications").upsert({book_id:book.id,channel_id:channel.id,status,text_message_id:textMessageId,epub_message_id:epubMessageId,pdf_message_id:pdfMessageId,last_error:errors.join(" | ")||null,sent_at:textMessageId||sent?new Date().toISOString():previous?.sent_at||null,updated_at:new Date().toISOString()},{onConflict:"book_id,channel_id"});
       results.push({channel:channel.title||String(channel.chat_id),role:channel.role,status,error:errors.join(" | ")||undefined});
     }catch(error){
       const reason=error instanceof Error?error.message:"Falha ao publicar no canal.";
-      await db.from("telegram_channel_publications").upsert({book_id:book.id,channel_id:channel.id,status:"failed",text_message_id:null,epub_message_id:epubMessageId,pdf_message_id:pdfMessageId,last_error:reason,updated_at:new Date().toISOString()},{onConflict:"book_id,channel_id"});
+      await db.from("telegram_channel_publications").upsert({book_id:book.id,channel_id:channel.id,status:"failed",text_message_id:textMessageId,epub_message_id:epubMessageId,pdf_message_id:pdfMessageId,last_error:reason,updated_at:new Date().toISOString()},{onConflict:"book_id,channel_id"});
       results.push({channel:channel.title||String(channel.chat_id),role:channel.role,status:"failed",error:reason});
     }
   }
