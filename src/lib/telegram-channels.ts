@@ -110,7 +110,7 @@ export async function publishBookToTelegramChannels(bookId:string,force=false){
     const {data:previous}=await db.from("telegram_channel_publications").select("*").eq("book_id",book.id).eq("channel_id",channel.id).maybeSingle();
     if(previous?.status==="sent"&&!force){results.push({channel:channel.title||String(channel.chat_id),role:channel.role,status:"already-sent"});continue;}
     await db.from("telegram_channel_publications").upsert({book_id:book.id,channel_id:channel.id,status:"pending",last_error:null,updated_at:new Date().toISOString()},{onConflict:"book_id,channel_id"});
-    let epubMessageId:number|null=null,pdfMessageId:number|null=null;const errors:string[]=[];
+    let textMessageId:number|null=null,epubMessageId:number|null=null,pdfMessageId:number|null=null;const errors:string[]=[];
     try{
       if(epub.id){
         try{
@@ -128,8 +128,14 @@ export async function publishBookToTelegramChannels(bookId:string,force=false){
           pdfMessageId=extractMessageId(sent);const fileId=extractFileId(sent);if(fileId)cachedTelegramFileIds.pdf=fileId;
         }catch(error){errors.push(`PDF: ${error instanceof Error?error.message:"falha no envio"}`);}
       }
-      const expected=(epub.id?1:0)+(pdf.id?1:0);const sent=(epubMessageId?1:0)+(pdfMessageId?1:0);const status=sent===expected&&expected>0?"sent":sent>0?"partial":"failed";
-      await db.from("telegram_channel_publications").upsert({book_id:book.id,channel_id:channel.id,status,text_message_id:null,epub_message_id:epubMessageId,pdf_message_id:pdfMessageId,last_error:errors.join(" | ")||null,sent_at:sent?new Date().toISOString():null,updated_at:new Date().toISOString()},{onConflict:"book_id,channel_id"});
+      const expected=(epub.id?1:0)+(pdf.id?1:0);const sent=(epubMessageId?1:0)+(pdfMessageId?1:0);
+      if(sent===0&&errors.length>0&&errors.every(error=>error.includes("Arquivo maior que o limite de envio do Telegram."))){
+        const bookUrl=`${PUBLIC_SITE_URL}/livro/${encodeURIComponent(book.slug||book.id)}`;
+        const fallback=await sendTelegramMessage(channel.chat_id,`${caption}\n\nOs arquivos deste título ultrapassam o limite do Telegram.\n\n🌐 <a href="${bookUrl}">Acessar e baixar pelo site</a>`);
+        textMessageId=extractMessageId(fallback);
+      }
+      const status=textMessageId||(sent===expected&&expected>0)?"sent":sent>0?"partial":"failed";
+      await db.from("telegram_channel_publications").upsert({book_id:book.id,channel_id:channel.id,status,text_message_id:textMessageId,epub_message_id:epubMessageId,pdf_message_id:pdfMessageId,last_error:errors.join(" | ")||null,sent_at:textMessageId||sent?new Date().toISOString():null,updated_at:new Date().toISOString()},{onConflict:"book_id,channel_id"});
       results.push({channel:channel.title||String(channel.chat_id),role:channel.role,status,error:errors.join(" | ")||undefined});
     }catch(error){
       const reason=error instanceof Error?error.message:"Falha ao publicar no canal.";
