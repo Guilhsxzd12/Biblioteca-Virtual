@@ -37,8 +37,7 @@ export function NavigationProgress(){
       }catch{}
     }
     function onSubmit(event:SubmitEvent){
-      const form=event.target as HTMLFormElement|null;if(!form)return;
-      if(form.target==="_blank")return;
+      const form=event.target as HTMLFormElement|null;if(!form||form.target==="_blank")return;
       start();
     }
     const originalPush=window.history.pushState;
@@ -66,12 +65,6 @@ export function HorizontalBookSlider({children,className=""}:{children:React.Rea
   const state=useRef({pressing:false,moved:false,startX:0,startScroll:0,pointerId:0,suppressClickUntil:0});
 
   function pointerDown(event:React.PointerEvent<HTMLDivElement>){
-    if(event.pointerType!=="mouse"||event.button!==0)return;
-    const el=ref.current;if(!el)return;
-    state.current.press ing=false;
-  }
-
-  function startPointer(event:React.PointerEvent<HTMLDivElement>){
     if(event.pointerType!=="mouse"||event.button!==0)return;
     const el=ref.current;if(!el)return;
     state.current={...state.current,pressing:true,moved:false,startX:event.clientX,startScroll:el.scrollLeft,pointerId:event.pointerId};
@@ -107,7 +100,7 @@ export function HorizontalBookSlider({children,className=""}:{children:React.Rea
   return <div
     ref={ref}
     className={`book-slider ${className}`.trim()}
-    onPointerDown={startPointer}
+    onPointerDown={pointerDown}
     onPointerMove={pointerMove}
     onPointerUp={stopDrag}
     onPointerCancel={stopDrag}
