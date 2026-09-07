@@ -40,6 +40,7 @@ function normalizeLanguage(v?:string|null){
 
 function compactIsbn(value?:string|null){return String(value||"").replace(/[^0-9X]/gi,"").toUpperCase();}
 function isIsbn(value:string){return /^(?:\d{9}[\dX]|\d{13})$/i.test(compactIsbn(value));}
+function externalFetch(input:string|URL,init:RequestInit={}){return fetch(input,{...init,signal:AbortSignal.timeout(8000)});}
 
 function titleCoverage(itemTitle:string,query:string){
   const t=norm(itemTitle),q=norm(query);if(!q)return 0;if(t===q)return 1;
@@ -69,29 +70,39 @@ function score(item:BookMetadataResult,query:string,isbn:string|null){
 }
 
 function dedupe(items:BookMetadataResult[],query:string,isbn:string|null){
-  const seen=new Set<string>();
   const relevant=isbn?items.filter(item=>compactIsbn(item.isbn)===isbn):items.filter(item=>titleCoverage(item.title,query)>=0.58);
-  return relevant
-    .sort((a,b)=>score(b,query,isbn)-score(a,query,isbn))
-    .filter(item=>{
-      const key=item.isbn?`isbn:${compactIsbn(item.isbn)}`:`${norm(item.title)}|${norm(item.author)}|${item.language||""}|${item.year||""}`;
-      if(seen.has(key))return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0,30);
+  const merged=new Map<string,BookMetadataResult>();
+  for(const item of relevant.sort((a,b)=>score(b,query,isbn)-score(a,query,isbn))){
+    const key=item.isbn?`isbn:${compactIsbn(item.isbn)}`:`${norm(item.title)}|${norm(item.author)}|${item.language||""}|${item.year||""}`;
+    const current=merged.get(key);if(!current){merged.set(key,item);continue;}
+    const publisher=item.source==="publisher"?item:current.source==="publisher"?current:null;
+    const richerDescription=[current.description,item.description].filter(Boolean).sort((a,b)=>(b?.length||0)-(a?.length||0))[0]||null;
+    merged.set(key,{...current,
+      source:publisher?.source||current.source,
+      title:publisher?.title||current.title,
+      author:publisher?.author||current.author,
+      language:publisher?.language||current.language||item.language,
+      year:publisher?.year||current.year||item.year,
+      pages:publisher?.pages||current.pages||item.pages,
+      description:publisher?.description||richerDescription,
+      coverUrl:publisher?.coverUrl||current.coverUrl||item.coverUrl,
+      categories:Array.from(new Set([...(current.categories||[]),...(item.categories||[])])).slice(0,18),
+      isEbook:Boolean(current.isEbook||item.isEbook)
+    });
+  }
+  return Array.from(merged.values()).sort((a,b)=>score(b,query,isbn)-score(a,query,isbn)).slice(0,30);
 }
 
 async function googleBooks(query:string,{ebooks=false,lang}:{ebooks?:boolean;lang?:string}={}){
   const url=new URL("https://www.googleapis.com/books/v1/volumes");
   url.searchParams.set("q",query);
   url.searchParams.set("printType","books");
-  url.searchParams.set("maxResults","20");
+  url.searchParams.set("maxResults","40");
   url.searchParams.set("orderBy","relevance");
   if(ebooks)url.searchParams.set("filter","ebooks");
   if(lang)url.searchParams.set("langRestrict",lang);
   const key=process.env.GOOGLE_BOOKS_API_KEY?.trim();if(key)url.searchParams.set("key",key);
-  const r=await fetch(url,{cache:"no-store"});
+  const r=await externalFetch(url,{cache:"no-store"});
   if(!r.ok)return [] as BookMetadataResult[];
   const p=await r.json();
   return (p.items||[]).map((item:any):BookMetadataResult=>{
@@ -118,7 +129,7 @@ async function googleBooks(query:string,{ebooks=false,lang}:{ebooks?:boolean;lan
 async function openLibraryDescription(workKey?:string){
   if(!workKey||!workKey.startsWith("/works/"))return null;
   try{
-    const r=await fetch(`https://openlibrary.org${workKey}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.6"},cache:"no-store"});if(!r.ok)return null;
+    const r=await externalFetch(`https://openlibrary.org${workKey}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.7"},cache:"no-store"});if(!r.ok)return null;
     const p=await r.json();const raw=typeof p.description==="string"?p.description:p.description?.value;
     return cleanText(raw);
   }catch{return null;}
@@ -131,7 +142,7 @@ async function openLibrarySearch(title:string,isbn:string|null,exactTitle=false)
   else url.searchParams.set("q",title);
   url.searchParams.set("limit","35");
   url.searchParams.set("fields","key,title,author_name,first_publish_year,cover_i,number_of_pages_median,isbn,ebook_access,public_scan_b,subject,language");
-  const r=await fetch(url,{headers:{"User-Agent":"BibliotecaVirtual/1.6"},cache:"no-store"});
+  const r=await externalFetch(url,{headers:{"User-Agent":"BibliotecaVirtual/1.7"},cache:"no-store"});
   if(!r.ok)return [] as BookMetadataResult[];
   const p=await r.json();const docs=(p.docs||[]) as any[];
   const descriptions=new Map<string,string|null>();
@@ -154,11 +165,11 @@ async function openLibrarySearch(title:string,isbn:string|null,exactTitle=false)
 
 async function openLibraryByIsbn(isbn:string){
   try{
-    const editionResponse=await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.6"},cache:"no-store"});
+    const editionResponse=await externalFetch(`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.7"},cache:"no-store"});
     if(!editionResponse.ok)return [] as BookMetadataResult[];
     const edition=await editionResponse.json();
     const authors=await Promise.all((edition.authors||[]).slice(0,6).map(async (author:any)=>{
-      try{const r=await fetch(`https://openlibrary.org${author.key}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.6"},cache:"no-store"});if(!r.ok)return null;const p=await r.json();return p.name||null;}catch{return null;}
+      try{const r=await externalFetch(`https://openlibrary.org${author.key}.json`,{headers:{"User-Agent":"BibliotecaVirtual/1.7"},cache:"no-store"});if(!r.ok)return null;const p=await r.json();return p.name||null;}catch{return null;}
     }));
     const workKey=edition.works?.[0]?.key;const description=await openLibraryDescription(workKey);
     const coverId=edition.covers?.[0];
@@ -177,6 +188,21 @@ async function openLibraryByIsbn(isbn:string){
       isEbook:false,
       categories:Array.isArray(edition.subjects)?edition.subjects.slice(0,14):[]
     } satisfies BookMetadataResult];
+  }catch{return [] as BookMetadataResult[];}
+}
+
+async function crossrefBooks(query:string,isbn:string|null){
+  try{
+    const url=new URL("https://api.crossref.org/works");
+    url.searchParams.set("query.bibliographic",isbn||query);url.searchParams.set("filter","type:book");url.searchParams.set("rows",isbn?"20":"30");
+    const response=await externalFetch(url,{headers:{"User-Agent":"EstanteVirtual/1.0 (mailto:luxstreambr@gmail.com)"},cache:"no-store"});if(!response.ok)return [] as BookMetadataResult[];
+    const payload=await response.json();
+    return (payload.message?.items||[]).map((item:any,index:number):BookMetadataResult=>{
+      const identifiers=(item.ISBN||[]) as string[];const foundIsbn=identifiers.find(value=>compactIsbn(value).length===13)||identifiers[0]||null;
+      const authors=(item.author||[]).map((author:any)=>[author.given,author.family].filter(Boolean).join(" ")).filter(Boolean);
+      const dateParts=item.published?.["date-parts"]?.[0]||item.issued?.["date-parts"]?.[0]||[];
+      return {id:`c:${item.DOI||index}`,source:"crossref",title:cleanText(item.title?.[0])||query,author:authors.join(", ")||"Autor não informado",language:normalizeLanguage(item.language),year:Number(dateParts[0])||null,pages:null,description:cleanText(item.abstract),coverUrl:null,isbn:foundIsbn,isEbook:false,categories:Array.isArray(item.subject)?item.subject.slice(0,12):[]};
+    });
   }catch{return [] as BookMetadataResult[];}
 }
 
@@ -217,7 +243,7 @@ function publisherAboutText(plain:string){
 
 async function companhiaByIsbn(isbn:string){
   try{
-    const response=await fetch(`https://www.companhiadasletras.com.br/livro/${encodeURIComponent(isbn)}/`,{headers:{"User-Agent":"Mozilla/5.0 BibliotecaVirtual/1.6","Accept":"text/html,application/xhtml+xml"},cache:"no-store",redirect:"follow"});
+    const response=await externalFetch(`https://www.companhiadasletras.com.br/livro/${encodeURIComponent(isbn)}/`,{headers:{"User-Agent":"Mozilla/5.0 EstanteVirtual/1.0","Accept":"text/html,application/xhtml+xml"},cache:"no-store",redirect:"follow"});
     if(!response.ok)return [] as BookMetadataResult[];
     const html=await responseHtml(response);const plain=cleanText(html)||"";
     const formatted=isbn.replace(/(\d{3})(\d{2})(\d{3})(\d{4})(\d)/,"$1-$2-$3-$4-$5");
@@ -241,7 +267,7 @@ async function companhiaByIsbn(isbn:string){
     const description=publisherAboutText(plain)||usefulPublisherDescription(htmlMeta(html,"og:description"))||usefulPublisherDescription(htmlMeta(html,"description"));
     const coverUrl=htmlMeta(html,"og:image");
     if(!title||encodingPenalty(title)>=100)return [] as BookMetadataResult[];
-    return [{id:`publisher:companhia:${isbn}`,source:"publisher",title,author,language:"pt",year:launchMatch?Number(launchMatch[1]):null,pages:pagesMatch?Number(pagesMatch[1]):null,description,coverUrl,isbn,isEbook:true,categories:["Fantasia"]} satisfies BookMetadataResult];
+    return [{id:`publisher:companhia:${isbn}`,source:"publisher",title,author,language:"pt",year:launchMatch?Number(launchMatch[1]):null,pages:pagesMatch?Number(pagesMatch[1]):null,description,coverUrl,isbn,isEbook:true,categories:[]} satisfies BookMetadataResult];
   }catch{return [] as BookMetadataResult[];}
 }
 
@@ -260,19 +286,12 @@ export async function GET(request:NextRequest){
   const quotedQuery=isbn?`isbn:${isbn}`:`"${title}"`;
   const accentlessQuery=!isbn&&accentless&&accentless!==norm(title)?`intitle:"${accentless}"`:null;
 
-  const tasks:Promise<BookMetadataResult[]>[]=[
-    googleBooks(exactQuery,{lang:"pt"}),
-    googleBooks(broadQuery,{lang:"pt"}),
-    googleBooks(quotedQuery,{lang:"pt"}),
-    googleBooks(broadQuery,{ebooks:true,lang:"pt"}),
-    googleBooks(exactQuery),
-    googleBooks(broadQuery),
-    googleBooks(quotedQuery),
-    openLibrarySearch(title,isbn,true),
-    openLibrarySearch(title,isbn,false)
+  const tasks:Promise<BookMetadataResult[]>[]=isbn?[
+    googleBooks(exactQuery,{lang:"pt"}),googleBooks(exactQuery),openLibrarySearch(title,isbn,true),openLibraryByIsbn(isbn),companhiaByIsbn(isbn),crossrefBooks(title,isbn)
+  ]:[
+    googleBooks(exactQuery,{lang:"pt"}),googleBooks(broadQuery,{lang:"pt"}),googleBooks(quotedQuery,{lang:"pt"}),googleBooks(broadQuery,{ebooks:true,lang:"pt"}),googleBooks(exactQuery),googleBooks(broadQuery),openLibrarySearch(title,null,true),openLibrarySearch(title,null,false),crossrefBooks(title,null)
   ];
   if(accentlessQuery)tasks.push(googleBooks(accentlessQuery,{lang:"pt"}),googleBooks(accentlessQuery));
-  if(isbn)tasks.push(openLibraryByIsbn(isbn),companhiaByIsbn(isbn));
 
   const settled=await Promise.allSettled(tasks);
   const all:BookMetadataResult[]=[];

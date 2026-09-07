@@ -45,6 +45,9 @@ input,textarea,select,button{min-width:0}
 }
 
 @media(max-width:900px){
+  /* The mobile capsule belongs to the document flow so it never covers form fields while scrolling. */
+  .capsule-store-header{position:static!important;inset:auto!important}
+  .app-shell{padding-top:0!important}
   .container,.shell-width{max-width:calc(100% - 28px)}
   .header-capsule.shell-width{width:100%!important;max-width:100%!important}
   .page-head{display:grid!important;grid-template-columns:minmax(0,1fr)!important;align-items:start!important;gap:16px!important}

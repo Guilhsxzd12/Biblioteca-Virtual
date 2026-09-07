@@ -16,6 +16,9 @@ const emptyDraft:Draft={title:"",author:"",description:"",language:"pt",year:"",
 function languageName(value?:string|null){return ({pt:"Português",en:"Inglês",es:"Espanhol",fr:"Francês",it:"Italiano",de:"Alemão"} as Record<string,string>)[value||""]||value||"Não informado";}
 function date(value:string){return new Intl.DateTimeFormat("pt-BR",{dateStyle:"short"}).format(new Date(value));}
 function normText(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();}
+function compactIsbn(value:string){return value.replace(/[^0-9X]/gi,"").toUpperCase();}
+function completeIsbn(value:string){return /^(?:\d{9}[\dX]|\d{13})$/.test(compactIsbn(value));}
+function partialIsbn(value:string){return /^[\dX\s-]+$/i.test(value.trim())&&!completeIsbn(value);}
 function cleanMarkup(value?:string|null){if(!value)return "";const div=document.createElement("div");div.innerHTML=value;return (div.textContent||div.innerText||"").replace(/\s+/g," ").trim();}
 function normalizeLanguage(value?:string|null){if(!value)return undefined;const x=value.trim().toLowerCase().replace(/_/g,"-");const map:Record<string,string>={por:"pt",ptbr:"pt","pt-br":"pt",eng:"en",spa:"es",fra:"fr",fre:"fr",ita:"it",deu:"de",ger:"de"};return map[x.replace(/-/g,"")]||map[x]||x.split("-")[0];}
 function yearFrom(value?:string|null){const match=value?.match(/\b(1[5-9]\d{2}|20\d{2}|21\d{2})\b/);return match?Number(match[1]):undefined;}
@@ -50,7 +53,7 @@ export function AdminDashboard({initialBooks,initialCategories,initialProfiles,i
   const [books,setBooks]=useState(initialBooks);const [categories,setCategories]=useState(initialCategories);const [profiles,setProfiles]=useState(initialProfiles);const [requests,setRequests]=useState(initialRequests);
   const [draft,setDraft]=useState<Draft>(emptyDraft);const [editing,setEditing]=useState<Book|null>(null);const [requestId,setRequestId]=useState<string|null>(null);
   const [epubFile,setEpubFile]=useState<File|null>(null);const [pdfFile,setPdfFile]=useState<File|null>(null);const [coverFile,setCoverFile]=useState<File|null>(null);
-  const [suggestions,setSuggestions]=useState<BookMetadataResult[]>([]);const [searching,setSearching]=useState(false);const [selected,setSelected]=useState<BookMetadataResult|null>(null);
+  const [suggestions,setSuggestions]=useState<BookMetadataResult[]>([]);const [searching,setSearching]=useState(false);const [metadataError,setMetadataError]=useState("");const [selected,setSelected]=useState<BookMetadataResult|null>(null);
   const [bookSearch,setBookSearch]=useState("");const [fileMetadataNote,setFileMetadataNote]=useState("");const [telegramBusyId,setTelegramBusyId]=useState<string|null>(null);
   const [message,setMessage]=useState("");const [busy,setBusy]=useState(false);const [progress,setProgress]=useState(0);const [drive,setDrive]=useState<{connected:boolean;accountEmail?:string|null}>({connected:false});
   const pendingRequests=requests.filter(item=>item.status==="pending");const completedRequests=requests.filter(item=>item.status!=="pending");
@@ -61,13 +64,13 @@ export function AdminDashboard({initialBooks,initialCategories,initialProfiles,i
   async function refreshDrive(){try{const response=await fetch("/api/drive/status",{cache:"no-store"});const data=await response.json();if(response.ok)setDrive(data);}catch{}}
   useEffect(()=>{void refreshDrive();},[]);
   useEffect(()=>{
-    if(editing||selected||draft.title.trim().length<2){setSuggestions([]);return;}
-    const controller=new AbortController();const timer=setTimeout(async()=>{setSearching(true);try{const response=await fetch(`/api/book-metadata?title=${encodeURIComponent(draft.title)}`,{signal:controller.signal});const data=await response.json();if(response.ok)setSuggestions(data.results||[]);}catch{}finally{setSearching(false);}},450);
+    if(editing||selected||draft.title.trim().length<2||partialIsbn(draft.title)){setSuggestions([]);setMetadataError("");return;}
+    const controller=new AbortController();const timer=setTimeout(async()=>{setSearching(true);setMetadataError("");try{const response=await fetch(`/api/book-metadata?title=${encodeURIComponent(draft.title)}`,{signal:controller.signal});const data=await response.json();if(!response.ok)throw new Error(data.error||"A busca não respondeu.");const results=(data.results||[]) as BookMetadataResult[];if(completeIsbn(draft.title)&&results[0])chooseMetadata(results[0]);else{setSuggestions(results);if(!results.length)setMetadataError("Nenhum resultado encontrado. Confira o ISBN ou continue preenchendo manualmente.");}}catch(error){if(!controller.signal.aborted)setMetadataError(error instanceof Error?error.message:"A busca falhou. Tente novamente.");}finally{if(!controller.signal.aborted)setSearching(false);}},completeIsbn(draft.title)?120:650);
     return()=>{clearTimeout(timer);controller.abort();};
   },[draft.title,selected,editing]);
 
   function chooseMetadata(item:BookMetadataResult){setSelected(item);setSuggestions([]);setDraft(current=>({...current,title:item.title,author:item.author,description:item.description||"",language:item.language||"pt",year:item.year?String(item.year):"",pages:item.pages?String(item.pages):"",coverUrl:item.coverUrl||"",categoryId:guessCategoryId(categories,item.categories||[],item.title,item.description||"")||current.categoryId}));}
-  function resetForm(){setEditing(null);setRequestId(null);setSelected(null);setDraft(emptyDraft);setEpubFile(null);setPdfFile(null);setCoverFile(null);setFileMetadataNote("");setProgress(0);(document.getElementById("book-form") as HTMLFormElement|null)?.reset();}
+  function resetForm(){setEditing(null);setRequestId(null);setSelected(null);setSuggestions([]);setMetadataError("");setDraft(emptyDraft);setEpubFile(null);setPdfFile(null);setCoverFile(null);setFileMetadataNote("");setProgress(0);(document.getElementById("book-form") as HTMLFormElement|null)?.reset();}
   function editBook(book:Book){setEditing(book);setRequestId(null);setSelected(null);setDraft({title:book.title,author:book.author,description:book.description||"",language:book.language||"pt",year:book.year?String(book.year):"",pages:book.pages?String(book.pages):"",categoryId:book.category_id||"",coverUrl:book.cover_url||"",published:book.published});setEpubFile(null);setPdfFile(null);setCoverFile(null);setFileMetadataNote("");setTab("livros");window.scrollTo({top:0,behavior:"smooth"});}
   function useRequest(item:BookRequest){resetForm();setRequestId(item.id);setDraft({...emptyDraft,title:item.title,author:item.author,language:item.language});setTab("livros");window.scrollTo({top:0,behavior:"smooth"});}
 
@@ -77,7 +80,7 @@ export function AdminDashboard({initialBooks,initialCategories,initialProfiles,i
       const meta=kind==="epub"?await readEpubMetadata(file):await readPdfMetadata(file);
       if(meta.coverFile&&!coverFile&&!draft.coverUrl.trim())setCoverFile(meta.coverFile);
       setDraft(current=>{
-        const title=current.title.trim()||meta.title||"";const description=current.description.trim()||meta.description||"";
+        const title=(!current.title.trim()||completeIsbn(current.title))&&meta.title?meta.title:current.title;const description=current.description.trim()||meta.description||"";
         const categoryId=current.categoryId||guessCategoryId(categories,meta.subjects||[],title,description)||"";
         const autoLanguage=!editing&&!selected&&current.language==="pt"&&meta.language?meta.language:current.language||meta.language||"pt";
         return {...current,title,author:current.author.trim()||meta.author||"",description,language:autoLanguage,year:current.year||String(meta.year||""),pages:current.pages||String(meta.pages||""),categoryId};
@@ -97,16 +100,19 @@ export function AdminDashboard({initialBooks,initialCategories,initialProfiles,i
     setTelegramBusyId(bookId);try{const response=await fetch("/api/admin/telegram/channels",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"publish_book",bookId})});const data=await response.json();if(!response.ok)throw new Error(data.error||"Não foi possível publicar no Telegram.");const sent=(data.results||[]).filter((item:any)=>item.status==="sent").length;const skipped=(data.results||[]).filter((item:any)=>item.status==="already-sent").length;const failed=(data.results||[]).filter((item:any)=>item.status==="failed"||item.status==="partial").length;return ` Telegram: ${sent} canal(is) enviado(s)${skipped?`, ${skipped} já estava(m) publicado(s)`:""}${failed?`, ${failed} com falha parcial`:""}.`; }finally{setTelegramBusyId(null);}
   }
 
+  function requestAdminNotification(){if("Notification" in window&&Notification.permission==="default")void Notification.requestPermission();}
+  function notifyAdmin(title:string,body:string){if("Notification" in window&&Notification.permission==="granted")new Notification(title,{body,icon:"/kindle-books-logo.svg"});if("vibrate" in navigator)navigator.vibrate([120,60,120]);}
+
   async function saveBook(_formData:FormData,publishTelegram=false){
     if(!draft.title.trim()||!draft.author.trim()){setMessage("Preencha título e autor.");return;}
     if(!editing&&(!epubFile||!pdfFile)){setMessage("Para cadastrar um livro novo, o EPUB e o PDF são obrigatórios.");return;}
-    setBusy(true);setProgress(0);setMessage("");
+    requestAdminNotification();setBusy(true);setProgress(0);setMessage("");
     try{
       let coverUrl=draft.coverUrl.trim();
       if(coverFile){const form=new FormData();form.append("file",coverFile);const response=await fetch("/api/admin/covers",{method:"POST",body:form});const data=await response.json();if(!response.ok)throw new Error(data.error||"Não foi possível enviar a capa.");coverUrl=data.coverUrl;}
       const epub=epubFile?await uploadFile(draft.title,epubFile,"application/epub+zip",value=>setProgress(Math.round(value*(pdfFile?0.5:1)))):null;
       const pdf=pdfFile?await uploadFile(draft.title,pdfFile,"application/pdf",value=>setProgress((epub?50:0)+Math.round(value*(epub?0.5:1)))):null;
-      const body:Record<string,unknown>={id:editing?.id,title:draft.title,author:draft.author,description:draft.description,language:draft.language,year:draft.year,pages:draft.pages,categoryId:draft.categoryId,coverUrl,published:draft.published,requestId};
+      const body:Record<string,unknown>={id:editing?.id,title:draft.title,author:draft.author,description:draft.description,language:draft.language,year:draft.year,pages:draft.pages,categoryId:draft.categoryId,coverUrl,published:true,requestId};
       if(epub){body.driveFileId=epub.id;body.fileName=epub.fileName;body.mimeType="application/epub+zip";if(pdf){body.readingPdfDriveFileId=pdf.id;body.readingPdfFileName=pdf.fileName;}else if(editing&&editing.reading_pdf_drive_file_id){body.readingPdfDriveFileId=editing.reading_pdf_drive_file_id;body.readingPdfFileName=editing.reading_pdf_file_name;}}
       else if(pdf){if(editing&&(editing.mime_type==="application/epub+zip"||editing.file_name.toLowerCase().endsWith(".epub"))){body.readingPdfDriveFileId=pdf.id;body.readingPdfFileName=pdf.fileName;}else{body.driveFileId=pdf.id;body.fileName=pdf.fileName;body.mimeType="application/pdf";}}
       const response=await fetch("/api/admin/books",{method:editing?"PATCH":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const data=await response.json();if(!response.ok)throw new Error(data.error||"Não foi possível salvar o livro.");
@@ -114,8 +120,8 @@ export function AdminDashboard({initialBooks,initialCategories,initialProfiles,i
       if(requestId)setRequests(current=>current.map(item=>item.id===requestId?{...item,status:"published",matched_book_id:data.book.id,published_at:new Date().toISOString(),notified_at:data.notification?.notificationSent?new Date().toISOString():null}:item));
       let telegramSuffix="";
       if(publishTelegram&&data.book.published){try{telegramSuffix=await publishBookOnTelegram(data.book.id);}catch(error){telegramSuffix=` Livro salvo, mas o Telegram não foi enviado: ${error instanceof Error?error.message:"falha desconhecida"}`;}}
-      setMessage(`${editing?"Livro atualizado":"Livro publicado"} com sucesso.${data.notification?.notificationSent?" O usuário foi avisado pelo Telegram.":""}${telegramSuffix}`);resetForm();
-    }catch(error){setMessage(error instanceof Error?error.message:"Erro ao salvar livro.");}finally{setBusy(false);}
+      const successMessage=`${editing?"Livro atualizado":"Livro publicado"} com sucesso.${data.notification?.notificationSent?" O usuário foi avisado pelo Telegram.":""}${telegramSuffix}`;setMessage(successMessage);notifyAdmin(telegramSuffix.includes("falha")?"Livro salvo; confira o Telegram":"Livro enviado",telegramSuffix.includes("falha")?`${data.book.title} entrou no site, mas houve falha no Telegram.`:`${data.book.title} foi publicado no site e enviado aos canais do Telegram.`);resetForm();
+    }catch(error){const errorMessage=error instanceof Error?error.message:"Erro ao salvar livro.";setMessage(errorMessage);notifyAdmin("Falha ao enviar livro",errorMessage);}finally{setBusy(false);}
   }
 
   async function publishExisting(book:Book){setMessage("");try{const suffix=await publishBookOnTelegram(book.id);setMessage(`${book.title}:${suffix}`);}catch(error){setMessage(error instanceof Error?error.message:"Não foi possível publicar no Telegram.");}}
@@ -130,13 +136,13 @@ export function AdminDashboard({initialBooks,initialCategories,initialProfiles,i
   const tabs:[Tab,string][]=[["livros","Livros"],["pedidos",`Pedidos (${pendingRequests.length})`],["categorias","Categorias"],["usuarios","Usuários"],["drive","Google Drive"]];
   return <>
     <div className="tabs">{tabs.map(([key,label])=><button key={key} className={`tab ${tab===key?"active":""}`} onClick={()=>setTab(key)}>{label}</button>)}</div>
-    {message&&<div className={`notice ${/sucesso|criado|publicado|atualizado|liberado|reenviada|telegram:/i.test(message)?"success":""}`}>{message}</div>}
+    {message&&<div role="status" aria-live="polite" className={`notice ${/sucesso|criado|publicado|atualizado|liberado|reenviada|telegram:/i.test(message)?"success":""}`}>{message}</div>}
 
     {tab==="livros"&&<div className="admin-grid">
       <section className="card panel"><div className="panel-title"><div><span className="eyebrow">{editing?"EDIÇÃO":"NOVO TÍTULO"}</span><h2>{editing?`Editar ${editing.title}`:"Adicionar livro"}</h2></div>{(editing||requestId)&&<button className="btn ghost small" onClick={resetForm}>Cancelar</button>}</div>
         {requestId&&<div className="notice success">Este cadastro veio de um pedido. Ao publicar, o pedido será marcado como atendido.</div>}
-        <form id="book-form" className="stack" action={saveBook}>
-          <label className="suggestion-box">Título<input value={draft.title} onChange={event=>{setDraft(current=>({...current,title:event.target.value}));setSelected(null);}} placeholder="Digite o título ou ISBN" required/>{searching&&<small>Buscando informações...</small>}{suggestions.length>0&&<div className="suggestions">{suggestions.map(item=><button type="button" className="suggestion" key={item.id} onClick={()=>chooseMetadata(item)}>{item.coverUrl?<img src={item.coverUrl} alt=""/>:<span/>}<span><strong>{item.title}</strong><small>{item.author}{item.year?` • ${item.year}`:""}</small></span></button>)}</div>}</label>
+        <form id="book-form" className="stack" action={formData=>saveBook(formData,true)}>
+          <label className="suggestion-box">Título ou ISBN<input value={draft.title} onChange={event=>{setDraft(current=>({...current,title:event.target.value}));setSelected(null);setMetadataError("");}} placeholder="Digite o título ou ISBN completo" required/>{partialIsbn(draft.title)&&<small>Continue digitando o ISBN completo (10 ou 13 dígitos).</small>}{searching&&<small>Buscando em Google Books, Open Library, editoras e Crossref...</small>}{metadataError&&<small className="metadata-search-error">{metadataError}</small>}{suggestions.length>0&&<div className="suggestions">{suggestions.map(item=><button type="button" className="suggestion" key={item.id} onClick={()=>chooseMetadata(item)}>{item.coverUrl?<img src={item.coverUrl} alt=""/>:<span/>}<span><strong>{item.title}</strong><small>{item.author}{item.year?` • ${item.year}`:""}</small></span></button>)}</div>}</label>
           <label>Autor<input value={draft.author} onChange={event=>setDraft(current=>({...current,author:event.target.value}))} required/></label>
           <div className="form-row"><label>Idioma<input value={draft.language} onChange={event=>setDraft(current=>({...current,language:event.target.value}))}/></label><label>Ano<input type="number" value={draft.year} onChange={event=>setDraft(current=>({...current,year:event.target.value}))}/></label><label>Páginas<input type="number" value={draft.pages} onChange={event=>setDraft(current=>({...current,pages:event.target.value}))}/></label></div>
           <label>Sinopse<textarea value={draft.description} onChange={event=>setDraft(current=>({...current,description:event.target.value}))}/></label>
@@ -145,11 +151,9 @@ export function AdminDashboard({initialBooks,initialCategories,initialProfiles,i
           <label>Ou envie a capa do dispositivo<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>setCoverFile(event.target.files?.[0]||null)}/><small>{coverFile?`Capa selecionada: ${coverFile.name}`:"Você pode cadastrar o livro sem capa e adicioná-la depois ao editar."}</small></label>
           <div className="file-pair"><label><strong>Arquivo EPUB</strong><span>{editing?"Opcional — envie apenas para substituir":"Obrigatório"}</span><input type="file" accept=".epub,application/epub+zip" onChange={event=>{const file=event.target.files?.[0]||null;setEpubFile(file);if(file)void absorbFileMetadata(file,"epub");}}/>{epubFile&&<small>{driveFileName(draft.title,epubFile.name)}</small>}</label><label><strong>Arquivo PDF</strong><span>{editing?"Opcional — envie apenas para substituir":"Obrigatório"}</span><input type="file" accept=".pdf,application/pdf" onChange={event=>{const file=event.target.files?.[0]||null;setPdfFile(file);if(file)void absorbFileMetadata(file,"pdf");}}/>{pdfFile&&<small>{driveFileName(draft.title,pdfFile.name)}</small>}</label></div>
           {fileMetadataNote&&<div className="file-metadata-note">{fileMetadataNote}</div>}
-          <label className="check-label"><input type="checkbox" checked={draft.published} onChange={event=>setDraft(current=>({...current,published:event.target.checked}))}/> Publicar no acervo</label>
           {busy&&<div className="upload-progress"><span style={{width:`${progress}%`}}/></div>}
-          <button className="btn" disabled={busy}>{busy?`Salvando${progress?` • ${progress}%`:"..."}`:editing?"Salvar alterações":"Publicar livro"}</button>
-          <button type="button" className="btn telegram-publish-btn" disabled={busy||telegramBusyId!==null} onClick={()=>{const form=document.getElementById("book-form") as HTMLFormElement|null;if(form?.reportValidity())void saveBook(new FormData(form),true);}}>{telegramBusyId?"Enviando ao Telegram...":editing?"Salvar e publicar no Telegram":"Publicar no Telegram"}</button>
-          <small className="telegram-publish-hint">Salva o livro no site e depois envia EPUB + PDF para os canais Oficial e Reserva. O segundo canal reaproveita o arquivo do Telegram para reduzir tráfego.</small>
+          <button className="btn" disabled={busy||telegramBusyId!==null}>{busy?(progress?`Enviando livro • ${progress}%`:"Enviando livro..."):"Enviar livro"}</button>
+          <small className="telegram-publish-hint">Um único envio publica o livro no site e encaminha EPUB + PDF aos canais Oficial e Reserva do Telegram.</small>
         </form>
       </section>
       <section className="card panel admin-library-panel"><div className="panel-title"><div><span className="eyebrow">ACERVO</span><h2>Livros cadastrados</h2></div><span className="count-badge">{books.length}</span></div>
