@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { requireApproved } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { getViewer,requireApproved } from "@/lib/auth";
 import { AccountMenu } from "@/components/AccountMenu";
 import { SiteFooter } from "@/components/SiteFooter";
-import type { Category } from "@/lib/types";
+import type { Category,Profile } from "@/lib/types";
 
 function Icon({name}:{name:"search"|"request"|"chevron"|"menu"}){
   const common={width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:1.9,strokeLinecap:"round" as const,strokeLinejoin:"round" as const,"aria-hidden":true};
@@ -15,8 +16,11 @@ function Icon({name}:{name:"search"|"request"|"chevron"|"menu"}){
 function WhatsAppIcon(){return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="11.5" r="7.6" fill="none" stroke="currentColor" strokeWidth="1.8"/><path d="M6.1 17.4 5 21l3.6-1.1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M9 8.3c.3-.3.7-.2.9.1l1 1.7c.2.3.1.6-.1.8l-.6.6c.7 1.4 1.8 2.5 3.3 3.2l.6-.7c.2-.2.5-.3.8-.1l1.7.9c.3.2.4.6.2.9-.5.8-1.4 1.3-2.3 1.2-3.8-.4-6.8-3.4-7.3-7.2-.1-.6.3-1.1.8-1.4Z" fill="currentColor"/></svg>}
 function TelegramIcon(){return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4 9.6 15.1M21 4l-6.2 16-5.2-4.9L5.9 18l1.2-5.4L3 10.9 21 4Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
 
-export async function AppShell({children}:{children:React.ReactNode}){
-  const {profile,supabase}=await requireApproved();
+export async function AppShell({children,allowInactive=false}:{children:React.ReactNode;allowInactive?:boolean}){
+  const viewer=allowInactive?await getViewer():await requireApproved();
+  if(!viewer.user)redirect("/login");
+  if(!viewer.profile)redirect("/aguardando-aprovacao");
+  const profile=viewer.profile as Profile;const supabase=viewer.supabase;
   const admin=profile.role==="admin";
   const [{data:categoryData},{data:authorData}]=await Promise.all([
     supabase.from("categories").select("id,name,slug").order("name"),
