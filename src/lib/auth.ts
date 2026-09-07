@@ -7,7 +7,7 @@ export async function getViewer(){
   const supabase=await createServerSupabaseClient();
   const {data:{user}}=await supabase.auth.getUser();
   if(!user)return {supabase,user:null,profile:null as Profile|null};
-  const {data:profile}=await supabase.from("profiles").select("id,email,full_name,role,approved").eq("id",user.id).maybeSingle();
+  const {data:profile}=await supabase.from("profiles").select("id,email,full_name,username,role,approved").eq("id",user.id).maybeSingle();
   return {supabase,user,profile:profile as Profile|null};
 }
 
