@@ -6,13 +6,46 @@ import { uploadDriveFileInChunks } from "@/lib/upload-client";
 import type { Book } from "@/lib/types";
 
 type Format="pdf"|"epub";
-type Item={book:Book;missing:Format[]};
+type MissingKey=Format|"author"|"description"|"cover"|"title";
+type Item={book:Book;missing:MissingKey[]};
 type Props={initialItems:Item[]};
+type Draft={title:string;author:string;description:string;coverUrl:string};
+
+function norm(value:unknown){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();}
+function isMain(book:Book,format:Format){const name=String(book.file_name||"").toLowerCase();return format==="pdf"?(book.mime_type==="application/pdf"||name.endsWith(".pdf")):(book.mime_type==="application/epub+zip"||name.endsWith(".epub"));}
+function authorMissing(book:Book){const value=norm(book.author);return !value||value.includes("nao identificado")||value==="unknown"||value==="desconhecido"||value==="sem autor";}
+function titleMissing(book:Book){const value=norm(book.title);return value.length<2||value.includes("titulo nao identificado");}
+function missingFor(book:Book,knownFormats?:Set<string>):MissingKey[]{
+  const extra=knownFormats||new Set<string>();const missing:MissingKey[]=[];
+  if(!(isMain(book,"pdf")||Boolean(book.reading_pdf_drive_file_id)||extra.has("pdf")))missing.push("pdf");
+  if(!(isMain(book,"epub")||Boolean(book.kindle_drive_file_id)||extra.has("epub")))missing.push("epub");
+  if(titleMissing(book))missing.push("title");
+  if(authorMissing(book))missing.push("author");
+  if(!String(book.description||"").trim())missing.push("description");
+  if(!String(book.cover_url||"").trim())missing.push("cover");
+  return missing;
+}
+function label(key:MissingKey){return ({pdf:"PDF",epub:"EPUB",author:"Autor",description:"Sinopse",cover:"Capa",title:"Título"} as Record<MissingKey,string>)[key];}
 
 export function MissingBooksAdmin({initialItems}:Props){
   const [items,setItems]=useState(initialItems);
   const [busy,setBusy]=useState<string|null>(null);
   const [message,setMessage]=useState("");
+  const [editing,setEditing]=useState<string|null>(null);
+  const [draft,setDraft]=useState<Draft>({title:"",author:"",description:"",coverUrl:""});
+  const [coverFile,setCoverFile]=useState<File|null>(null);
+
+  function beginEdit(item:Item){setEditing(item.book.id);setCoverFile(null);setMessage("");setDraft({title:item.book.title||"",author:item.book.author||"",description:item.book.description||"",coverUrl:item.book.cover_url||""});}
+  function replaceBook(book:Book,clearedFormat?:Format){
+    setItems(current=>current.map(row=>{
+      if(row.book.id!==book.id)return row;
+      const keep=row.missing.filter(key=>key!==clearedFormat);
+      const fileMissing=keep.filter(key=>key==="pdf"||key==="epub") as MissingKey[];
+      const metadataMissing=missingFor(book).filter(key=>key!=="pdf"&&key!=="epub");
+      const combined=[...fileMissing,...metadataMissing].filter((value,index,array)=>array.indexOf(value)===index);
+      return {book,missing:combined};
+    }).filter(row=>row.missing.length>0));
+  }
 
   async function uploadMissing(item:Item,format:Format,file:File){
     const key=`${item.book.id}:${format}`;setBusy(key);setMessage("");
@@ -32,31 +65,54 @@ export function MissingBooksAdmin({initialItems}:Props){
         try{
           const tg=await fetch("/api/admin/telegram/channels",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"publish_book",bookId:item.book.id,force:false})});
           const tgData=await tg.json();
-          if(tg.ok){const sent=(tgData.results||[]).filter((r:any)=>r.status==="sent").length;const skipped=(tgData.results||[]).filter((r:any)=>r.status==="already-sent").length;telegramNote=` Telegram: ${sent} enviado(s)${skipped?`, ${skipped} já estava(m) completo(s)`:""}.`;}
+          if(tg.ok){const sent=(tgData.results||[]).filter((r:any)=>r.status==="sent").length;const skipped=(tgData.results||[]).filter((r:any)=>r.status==="already-sent").length;telegramNote=` Telegram: ${sent} enviado(s)${skipped?`, ${skipped} já estava(m) enviado(s)`:""}.`;}
           else telegramNote=` Telegram: ${tgData.error||"não enviado"}.`;
         }catch{telegramNote=" Telegram: será possível reenviar pelo painel.";}
       }
 
-      setItems(current=>current.map(row=>row.book.id===item.book.id?{book:data.book,missing:row.missing.filter(x=>x!==format)}:row).filter(row=>row.missing.length>0));
+      replaceBook(data.book as Book,format);
       setMessage(`✅ ${format.toUpperCase()} adicionado a “${item.book.title}”.${telegramNote}`);
     }catch(error){setMessage(`❌ ${error instanceof Error?error.message:"Erro no upload."}`);}finally{setBusy(null);}
   }
 
-  if(items.length===0)return <div className="card panel"><h2>✅ Acervo completo</h2><p className="muted">Nenhum livro está faltando PDF ou EPUB.</p>{message&&<div className="notice">{message}</div>}</div>;
+  async function saveMetadata(item:Item){
+    setBusy(`${item.book.id}:metadata`);setMessage("");
+    try{
+      let coverUrl=draft.coverUrl.trim();
+      if(coverFile){const form=new FormData();form.append("file",coverFile);const response=await fetch("/api/admin/covers",{method:"POST",body:form});const data=await response.json();if(!response.ok)throw new Error(data.error||"Não foi possível enviar a capa.");coverUrl=data.coverUrl;}
+      const response=await fetch("/api/admin/books",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({id:item.book.id,title:draft.title,author:draft.author,description:draft.description,coverUrl,metadataReviewed:true})});
+      const data=await response.json();if(!response.ok)throw new Error(data.error||"Falha ao salvar as informações.");
+      replaceBook(data.book as Book);
+      setEditing(null);setCoverFile(null);setMessage(`✅ Informações de “${data.book.title}” atualizadas.`);
+    }catch(error){setMessage(`❌ ${error instanceof Error?error.message:"Erro ao salvar."}`);}finally{setBusy(null);}
+  }
+
+  if(items.length===0)return <div className="card panel"><h2>✅ Acervo completo</h2><p className="muted">Nenhum livro está faltando PDF, EPUB, autor, sinopse ou capa.</p>{message&&<div className="notice">{message}</div>}</div>;
 
   return <div className="stack" style={{gap:16}}>
-    <div className="card panel"><h2>Faltantes</h2><p className="muted">Ao adicionar o arquivo que falta, o livro sai desta lista automaticamente. Quando um EPUB em português é adicionado, o site também tenta enviá-lo aos canais do Telegram sem repetir o que já foi enviado.</p>{message&&<div className="notice" style={{marginTop:12}}>{message}</div>}</div>
-    {items.map(item=><section className="card panel" key={item.book.id}>
-      <div className="row wrap" style={{justifyContent:"space-between",alignItems:"center",gap:16}}>
-        <div style={{display:"flex",gap:14,alignItems:"center",minWidth:0}}>
-          {item.book.cover_url?<img src={item.book.cover_url} alt="" style={{width:58,height:82,objectFit:"cover",borderRadius:8}}/>:<div className="cover-fallback" style={{width:58,height:82,fontSize:10}}>Sem capa</div>}
-          <div><h3 style={{margin:0}}>{item.book.title}</h3><p className="muted" style={{margin:"4px 0"}}>{item.book.author}</p><div className="row wrap">{item.missing.map(format=><span className="badge" key={format}>⚠️ Falta {format.toUpperCase()}</span>)}</div></div>
+    <div className="card panel"><h2>Faltantes</h2><p className="muted">Aqui entram tanto arquivos ausentes quanto informações importantes. Ao corrigir o que falta, o livro sai desta lista automaticamente.</p>{message&&<div className="notice" style={{marginTop:12}}>{message}</div>}</div>
+    {items.map(item=>{
+      const metadataMissing=item.missing.some(key=>!["pdf","epub"].includes(key));const isEditing=editing===item.book.id;
+      return <section className="card panel" key={item.book.id}>
+        <div style={{display:"grid",gridTemplateColumns:"72px minmax(0,1fr)",gap:14,alignItems:"start"}}>
+          {item.book.cover_url?<img src={item.book.cover_url} alt="" style={{width:72,height:102,objectFit:"cover",borderRadius:8}}/>:<div className="cover-fallback" style={{width:72,height:102,fontSize:10}}>Sem capa</div>}
+          <div className="stack" style={{gap:10}}>
+            <div><h3 style={{margin:0}}>{item.book.title||"Título não identificado"}</h3><p className="muted" style={{margin:"4px 0"}}>{item.book.author||"Autor não identificado"}</p><div className="row wrap">{item.missing.map(key=><span className="badge" key={key}>⚠️ Falta {label(key)}</span>)}</div></div>
+            {!isEditing?<div className="row wrap">
+              {item.missing.includes("pdf")&&<label className="btn" style={{cursor:"pointer"}}>{busy===`${item.book.id}:pdf`?"Enviando...":"Adicionar PDF"}<input hidden type="file" disabled={Boolean(busy)} accept=".pdf,application/pdf" onChange={e=>{const file=e.target.files?.[0];if(file)void uploadMissing(item,"pdf",file);e.currentTarget.value="";}}/></label>}
+              {item.missing.includes("epub")&&<label className="btn" style={{cursor:"pointer"}}>{busy===`${item.book.id}:epub`?"Enviando...":"Adicionar EPUB"}<input hidden type="file" disabled={Boolean(busy)} accept=".epub,application/epub+zip" onChange={e=>{const file=e.target.files?.[0];if(file)void uploadMissing(item,"epub",file);e.currentTarget.value="";}}/></label>}
+              {metadataMissing&&<button className="btn" onClick={()=>beginEdit(item)}>Corrigir informações</button>}
+              <Link className="btn ghost" href={`/livro/${item.book.slug}`} target="_blank">Abrir</Link>
+            </div>:<div className="stack" style={{gap:10}}>
+              <label>Título<input value={draft.title} onChange={e=>setDraft(d=>({...d,title:e.target.value}))}/></label>
+              <label>Autor<input value={draft.author} onChange={e=>setDraft(d=>({...d,author:e.target.value}))}/></label>
+              <label>Sinopse<textarea rows={6} value={draft.description} onChange={e=>setDraft(d=>({...d,description:e.target.value}))}/></label>
+              <label>Capa<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setCoverFile(e.target.files?.[0]||null)}/></label>
+              <div className="row wrap"><button className="btn" disabled={Boolean(busy)} onClick={()=>void saveMetadata(item)}>{busy===`${item.book.id}:metadata`?"Salvando...":"Salvar"}</button><button className="btn ghost" disabled={Boolean(busy)} onClick={()=>{setEditing(null);setCoverFile(null);}}>Cancelar</button></div>
+            </div>}
+          </div>
         </div>
-        <div className="row wrap">
-          {item.missing.map(format=><label className="btn" key={format} style={{cursor:"pointer"}}>{busy===`${item.book.id}:${format}`?"Enviando...":`Adicionar ${format.toUpperCase()}`}<input hidden type="file" disabled={Boolean(busy)} accept={format==="epub"?".epub,application/epub+zip":".pdf,application/pdf"} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadMissing(item,format,file);e.currentTarget.value="";}}/></label>)}
-          <Link className="btn ghost" href={`/livro/${item.book.slug}`} target="_blank">Abrir</Link>
-        </div>
-      </div>
-    </section>)}
+      </section>;
+    })}
   </div>;
 }
