@@ -1,6 +1,6 @@
 import { NextRequest,NextResponse } from "next/server";
 import { getApiViewer } from "@/lib/auth";
-import { createAdminSupabaseClient } from "@/lib/supabase/admin";
+import { createAdminSupabaseClient,createBotAuthSupabaseClient } from "@/lib/supabase/admin";
 
 function cleanUsername(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9._-]+/g,"").slice(0,32);}
 
@@ -18,11 +18,22 @@ export async function PATCH(request:NextRequest){
     const fullName=typeof body.fullName==="string"?body.fullName.trim():undefined;
     const email=typeof body.email==="string"?body.email.trim().toLowerCase():undefined;
     const requestedUsername=typeof body.username==="string"?body.username.trim():undefined;
+    const currentPassword=typeof body.currentPassword==="string"?body.currentPassword:"";
     const password=typeof body.password==="string"?body.password:"";
 
     if(email!==undefined&&!/^\S+@\S+\.\S+$/.test(email))return NextResponse.json({error:"Informe um e-mail válido."},{status:400});
     if(password&&password.length<8)return NextResponse.json({error:"A nova senha precisa ter pelo menos 8 caracteres."},{status:400});
     if(fullName!==undefined&&fullName.length<2)return NextResponse.json({error:"O nome precisa ter pelo menos 2 caracteres."},{status:400});
+
+    const emailChanged=email!==undefined&&email!==(viewer.user.email||"").toLowerCase();
+    if(emailChanged||password){
+      if(!currentPassword)return NextResponse.json({error:"Digite sua senha atual para confirmar a alteração."},{status:400});
+      if(!viewer.user.email)return NextResponse.json({error:"Sua conta não possui e-mail de autenticação válido."},{status:400});
+      const verifier=createBotAuthSupabaseClient();
+      const {data,error}=await verifier.auth.signInWithPassword({email:viewer.user.email,password:currentPassword});
+      if(error||!data.user)return NextResponse.json({error:"A senha atual está incorreta."},{status:401});
+      await verifier.auth.signOut();
+    }
 
     const admin=createAdminSupabaseClient();
     let username=viewer.profile.username||null;
@@ -34,7 +45,7 @@ export async function PATCH(request:NextRequest){
     }
 
     const authPatch:Record<string,unknown>={};
-    if(email!==undefined&&email!==viewer.user.email)authPatch.email=email;
+    if(emailChanged)authPatch.email=email;
     if(password)authPatch.password=password;
     if(fullName!==undefined||requestedUsername!==undefined){
       authPatch.user_metadata={...(viewer.user.user_metadata||{}),...(fullName!==undefined?{full_name:fullName}:{}),...(requestedUsername!==undefined?{username}:{} )};
