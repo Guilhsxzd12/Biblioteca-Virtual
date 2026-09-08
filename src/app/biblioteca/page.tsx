@@ -28,13 +28,14 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<L
   const admin=createAdminSupabaseClient();
   const {q="",categoria="",autor="",pagina="1"}=await searchParams;
   const query=q.trim();const authorFilter=autor.trim();
-  const [{data:bookData},{data:categoryData},{data:favoriteRows},{data:viewRows}]=await Promise.all([
+  const [{data:bookData},{data:categoryData},{data:favoriteRows},{data:viewRows},{count:publishedCount}]=await Promise.all([
     supabase.from("books").select("*,categories(name)").eq("published",true).order("created_at",{ascending:false}),
     supabase.from("categories").select("*").order("name"),
     admin.from("favorites").select("book_id"),
-    admin.from("book_view_events").select("book_id").order("viewed_at",{ascending:false}).limit(5000)
+    admin.from("book_view_events").select("book_id").order("viewed_at",{ascending:false}).limit(5000),
+    supabase.from("books").select("id",{count:"exact",head:true}).eq("published",true)
   ]);
-  const all=(bookData||[]) as Book[];const categories=(categoryData||[]) as Category[];
+  const all=(bookData||[]) as Book[];const categories=(categoryData||[]) as Category[];const totalBooks=publishedCount??all.length;
   const selectedCategory=categories.find(c=>c.slug===categoria);
   const authors=Array.from(new Set(all.map(book=>book.author?.trim()).filter((value):value is string=>Boolean(value)))).sort((a,b)=>a.localeCompare(b,"pt-BR"));
   const filtered=all.filter(book=>(!query||matches(query,book))&&(!selectedCategory||book.category_id===selectedCategory.id)&&(!authorFilter||norm(book.author||"")===norm(authorFilter)));
@@ -59,7 +60,7 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<L
   return <AppShell><main className="library-home">
     {!filteredMode&&<section className="editorial-hero">
       <div className="shell-width editorial-hero-inner">
-        <div className="editorial-copy"><span className="eyebrow">OLÁ, {profile.full_name?.split(" ")[0]?.toUpperCase()||"LEITOR"}</span><h1>Histórias para todos<br/>os seus momentos.</h1><p>Explore o acervo, escolha seu próximo livro e baixe em PDF ou EPUB para ler no aplicativo que preferir.</p><form className="hero-search" action="/biblioteca"><input name="q" placeholder="Qual livro você procura?" aria-label="Pesquisar livro"/><button>Buscar</button></form><div className="hero-stats"><div><strong>{all.length}</strong><span>livros disponíveis</span></div><div><strong>{categories.length}</strong><span>categorias</span></div></div></div>
+        <div className="editorial-copy"><span className="eyebrow">OLÁ, {profile.full_name?.split(" ")[0]?.toUpperCase()||"LEITOR"}</span><h1>Histórias para todos<br/>os seus momentos.</h1><p>Explore o acervo, escolha seu próximo livro e baixe em PDF ou EPUB para ler no aplicativo que preferir.</p><form className="hero-search" action="/biblioteca"><input name="q" placeholder="Qual livro você procura?" aria-label="Pesquisar livro"/><button>Buscar</button></form><div className="hero-stats"><div><strong>{totalBooks}</strong><span>livros disponíveis</span></div><div><strong>{categories.length}</strong><span>categorias</span></div></div></div>
         <div className="cover-collage" aria-label="Livros em destaque">{featured.map((book,index)=><Link href={`/livro/${book.slug}`} className={`collage-book collage-${index+1}`} key={book.id}>{book.cover_url&&<img src={book.cover_url} alt={`Capa de ${book.title}`}/>}</Link>)}</div>
       </div>
     </section>}
