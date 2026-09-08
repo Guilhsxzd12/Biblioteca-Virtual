@@ -3,6 +3,7 @@ import { AppShell } from "@/components/AppShell";
 import { BackToPrevious } from "@/components/BackToPrevious";
 import { BookCard } from "@/components/BookCard";
 import { HorizontalBookSlider } from "@/components/HorizontalBookSlider";
+import { RealtimeBookCount } from "@/components/RealtimeBookCount";
 import { requireApproved } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Book,Category } from "@/lib/types";
@@ -60,7 +61,7 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<L
   return <AppShell><main className="library-home">
     {!filteredMode&&<section className="editorial-hero">
       <div className="shell-width editorial-hero-inner">
-        <div className="editorial-copy"><span className="eyebrow">OLÁ, {profile.full_name?.split(" ")[0]?.toUpperCase()||"LEITOR"}</span><h1>Histórias para todos<br/>os seus momentos.</h1><p>Explore o acervo, escolha seu próximo livro e baixe em PDF ou EPUB para ler no aplicativo que preferir.</p><form className="hero-search" action="/biblioteca"><input name="q" placeholder="Qual livro você procura?" aria-label="Pesquisar livro"/><button>Buscar</button></form><div className="hero-stats"><div><strong>{totalBooks}</strong><span>livros disponíveis</span></div><div><strong>{categories.length}</strong><span>categorias</span></div></div></div>
+        <div className="editorial-copy"><span className="eyebrow">OLÁ, {profile.full_name?.split(" ")[0]?.toUpperCase()||"LEITOR"}</span><h1>Histórias para todos<br/>os seus momentos.</h1><p>Explore o acervo, escolha seu próximo livro e baixe em PDF ou EPUB para ler no aplicativo que preferir.</p><form className="hero-search" action="/biblioteca"><input name="q" placeholder="Qual livro você procura?" aria-label="Pesquisar livro"/><button>Buscar</button></form><div className="hero-stats"><div><RealtimeBookCount initialCount={totalBooks}/><span>livros disponíveis</span></div><div><strong>{categories.length}</strong><span>categorias</span></div></div></div>
         <div className="cover-collage" aria-label="Livros em destaque">{featured.map((book,index)=><Link href={`/livro/${book.slug}`} className={`collage-book collage-${index+1}`} key={book.id}>{book.cover_url&&<img src={book.cover_url} alt={`Capa de ${book.title}`}/>}</Link>)}</div>
       </div>
     </section>}
