@@ -9,6 +9,7 @@ import { BookCard } from "@/components/BookCard";
 import { HorizontalBookSlider } from "@/components/HorizontalBookSlider";
 import { BookViewTracker } from "@/components/BookViewTracker";
 import { requireApproved } from "@/lib/auth";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Book } from "@/lib/types";
 
 function isPdf(book:Book){return book.mime_type==="application/pdf"||book.file_name.toLowerCase().endsWith(".pdf");}
@@ -19,14 +20,27 @@ function languageOptions(rows:{language:string;format:string}[],format:"pdf"|"ep
 export async function generateMetadata({params}:{params:Promise<{slug:string}>}):Promise<Metadata>{const {slug}=await params;return {title:slug.split("-").map(word=>word.charAt(0).toUpperCase()+word.slice(1)).join(" ")};}
 
 export default async function BookPage({params}:{params:Promise<{slug:string}>}){
-  const {slug}=await params;const {supabase,user,profile}=await requireApproved();const result=await supabase.from("books").select("*,categories(name)").eq("slug",slug).eq("published",true).maybeSingle();let book=result.data;
-  if(!book&&/^[0-9a-f-]{36}$/i.test(slug)){const legacy=await supabase.from("books").select("*,categories(name)").eq("id",slug).eq("published",true).maybeSingle();if(legacy.data)permanentRedirect(`/livro/${legacy.data.slug}`);}
-  if(!book)notFound();const b=book as Book;
+  const {slug}=await params;
+  const {supabase,user,profile}=await requireApproved();
+  const catalogDb=createAdminSupabaseClient();
+
+  const result=await catalogDb.from("books").select("*,categories(name)").eq("slug",slug).eq("published",true).maybeSingle();
+  if(result.error)console.error("[book_detail]",{slug,code:result.error.code,message:result.error.message});
+  let book=result.data;
+
+  if(!book&&/^[0-9a-f-]{36}$/i.test(slug)){
+    const legacy=await catalogDb.from("books").select("*,categories(name)").eq("id",slug).eq("published",true).maybeSingle();
+    if(legacy.data)permanentRedirect(`/livro/${legacy.data.slug}`);
+  }
+  if(!book)notFound();
+  const b=book as Book;
+
   const [{data:favorite},{data:relatedData},{data:fileRows}]=await Promise.all([
     supabase.from("favorites").select("book_id").eq("user_id",user.id).eq("book_id",b.id).maybeSingle(),
-    supabase.from("books").select("*,categories(name)").eq("published",true).neq("id",b.id).limit(30),
-    supabase.from("book_language_files").select("language,format").eq("book_id",b.id)
+    catalogDb.from("books").select("*,categories(name)").eq("published",true).neq("id",b.id).limit(40),
+    catalogDb.from("book_language_files").select("language,format").eq("book_id",b.id)
   ]);
+
   const related=((relatedData||[]) as Book[]).sort((a,c)=>{const ar=(a.author||"").toLowerCase()===(b.author||"").toLowerCase()?2:a.category_id&&a.category_id===b.category_id?1:0;const cr=(c.author||"").toLowerCase()===(b.author||"").toLowerCase()?2:c.category_id&&c.category_id===b.category_id?1:0;return cr-ar;}).filter(item=>(item.author||"").toLowerCase()===(b.author||"").toLowerCase()||Boolean(item.category_id&&item.category_id===b.category_id)).slice(0,12);
   const rows=(fileRows||[]) as {language:string;format:string}[];const fallbackLanguage=b.language||"pt";const rawHasPdf=isPdf(b)||Boolean(b.reading_pdf_drive_file_id);const rawHasEpub=isEpub(b)||Boolean(b.kindle_drive_file_id);const pdfLanguages=languageOptions(rows,"pdf",rawHasPdf?fallbackLanguage:null);const epubLanguages=languageOptions(rows,"epub",rawHasEpub?fallbackLanguage:null);const hasPdf=pdfLanguages.length>0;const hasEpub=epubLanguages.length>0;
   const allLanguages=[...new Map([...pdfLanguages,...epubLanguages].map(x=>[x.code,x])).values()];
