@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { catalogAuthors } from "@/lib/catalog";
 import { redirect } from "next/navigation";
 import { getViewer,requireApproved } from "@/lib/auth";
 import { AccountMenu } from "@/components/AccountMenu";
@@ -23,12 +24,12 @@ export async function AppShell({children,allowInactive=false}:{children:React.Re
   if(!viewer.profile)redirect("/aguardando-aprovacao");
   const profile=viewer.profile as Profile;const supabase=viewer.supabase;
   const admin=profile.role==="admin";
-  const [{data:categoryData},{data:authorData}]=await Promise.all([
+  const [{data:categoryData},authorData]=await Promise.all([
     supabase.from("categories").select("id,name,slug").order("name"),
-    supabase.from("books").select("author").eq("published",true).not("author","is",null)
+    catalogAuthors(supabase)
   ]);
   const categories=(categoryData||[]) as Category[];
-  const authors=Array.from(new Set((authorData||[]).map(row=>String(row.author||"").trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,"pt-BR")).slice(0,18);
+  const authors=authorData.slice(0,18);
 
   const categoryLinks=categories.map(category=><Link key={category.id} href={`/biblioteca?categoria=${encodeURIComponent(category.slug)}`}>{category.name}</Link>);
   const authorLinks=authors.map(author=><Link key={author} href={`/biblioteca?autor=${encodeURIComponent(author)}`}>{author}</Link>);

@@ -3,13 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { uploadDriveFileInChunks } from "@/lib/upload-client";
-import type { Book } from "@/lib/types";
+import type { Book, Category } from "@/lib/types";
 
 type Format="pdf"|"epub";
-type MissingKey=Format|"author"|"description"|"cover"|"title";
+type MissingKey=Format|"author"|"description"|"cover"|"title"|"category";
 type Item={book:Book;missing:MissingKey[]};
-type Props={initialItems:Item[]};
-type Draft={title:string;author:string;description:string;coverUrl:string};
+type Props={initialItems:Item[];categories:Category[]};
+type Draft={title:string;author:string;description:string;coverUrl:string;categoryId:string};
 
 function norm(value:unknown){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();}
 function isMain(book:Book,format:Format){const name=String(book.file_name||"").toLowerCase();return format==="pdf"?(book.mime_type==="application/pdf"||name.endsWith(".pdf")):(book.mime_type==="application/epub+zip"||name.endsWith(".epub"));}
@@ -19,23 +19,24 @@ function missingFor(book:Book,knownFormats?:Set<string>):MissingKey[]{
   const extra=knownFormats||new Set<string>();const missing:MissingKey[]=[];
   if(!(isMain(book,"pdf")||Boolean(book.reading_pdf_drive_file_id)||extra.has("pdf")))missing.push("pdf");
   if(!(isMain(book,"epub")||Boolean(book.kindle_drive_file_id)||extra.has("epub")))missing.push("epub");
+  if(!book.category_id)missing.push("category");
   if(titleMissing(book))missing.push("title");
   if(authorMissing(book))missing.push("author");
   if(!String(book.description||"").trim())missing.push("description");
   if(!String(book.cover_url||"").trim())missing.push("cover");
   return missing;
 }
-function label(key:MissingKey){return ({pdf:"PDF",epub:"EPUB",author:"Autor",description:"Sinopse",cover:"Capa",title:"Título"} as Record<MissingKey,string>)[key];}
+function label(key:MissingKey){return ({pdf:"PDF",epub:"EPUB",author:"Autor",description:"Sinopse",cover:"Capa",title:"Título",category:"Categoria"} as Record<MissingKey,string>)[key];}
 
-export function MissingBooksAdmin({initialItems}:Props){
+export function MissingBooksAdmin({initialItems,categories}:Props){
   const [items,setItems]=useState(initialItems);
   const [busy,setBusy]=useState<string|null>(null);
   const [message,setMessage]=useState("");
   const [editing,setEditing]=useState<string|null>(null);
-  const [draft,setDraft]=useState<Draft>({title:"",author:"",description:"",coverUrl:""});
+  const [draft,setDraft]=useState<Draft>({title:"",author:"",description:"",coverUrl:"",categoryId:""});
   const [coverFile,setCoverFile]=useState<File|null>(null);
 
-  function beginEdit(item:Item){setEditing(item.book.id);setCoverFile(null);setMessage("");setDraft({title:item.book.title||"",author:item.book.author||"",description:item.book.description||"",coverUrl:item.book.cover_url||""});}
+  function beginEdit(item:Item){setEditing(item.book.id);setCoverFile(null);setMessage("");setDraft({title:item.book.title||"",author:item.book.author||"",description:item.book.description||"",coverUrl:item.book.cover_url||"",categoryId:item.book.category_id||""});}
   function replaceBook(book:Book,clearedFormat?:Format){
     setItems(current=>current.map(row=>{
       if(row.book.id!==book.id)return row;
@@ -80,14 +81,14 @@ export function MissingBooksAdmin({initialItems}:Props){
     try{
       let coverUrl=draft.coverUrl.trim();
       if(coverFile){const form=new FormData();form.append("file",coverFile);const response=await fetch("/api/admin/covers",{method:"POST",body:form});const data=await response.json();if(!response.ok)throw new Error(data.error||"Não foi possível enviar a capa.");coverUrl=data.coverUrl;}
-      const response=await fetch("/api/admin/books",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({id:item.book.id,title:draft.title,author:draft.author,description:draft.description,coverUrl,metadataReviewed:true})});
+      const response=await fetch("/api/admin/books",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({id:item.book.id,title:draft.title,author:draft.author,description:draft.description,coverUrl,categoryId:draft.categoryId,metadataReviewed:true})});
       const data=await response.json();if(!response.ok)throw new Error(data.error||"Falha ao salvar as informações.");
       replaceBook(data.book as Book);
       setEditing(null);setCoverFile(null);setMessage(`✅ Informações de “${data.book.title}” atualizadas.`);
     }catch(error){setMessage(`❌ ${error instanceof Error?error.message:"Erro ao salvar."}`);}finally{setBusy(null);}
   }
 
-  if(items.length===0)return <div className="card panel"><h2>✅ Acervo completo</h2><p className="muted">Nenhum livro está faltando PDF, EPUB, autor, sinopse ou capa.</p>{message&&<div className="notice">{message}</div>}</div>;
+  if(items.length===0)return <div className="card panel"><h2>Nenhuma pendência nesta página</h2><p className="muted">Não há pendências nos registros exibidos. Confira as outras páginas, se houver.</p>{message&&<div className="notice">{message}</div>}</div>;
 
   return <div className="stack" style={{gap:16}}>
     <div className="card panel"><h2>Faltantes</h2><p className="muted">Aqui entram tanto arquivos ausentes quanto informações importantes. Ao corrigir o que falta, o livro sai desta lista automaticamente.</p>{message&&<div className="notice" style={{marginTop:12}}>{message}</div>}</div>
@@ -106,6 +107,7 @@ export function MissingBooksAdmin({initialItems}:Props){
             </div>:<div className="stack" style={{gap:10}}>
               <label>Título<input value={draft.title} onChange={e=>setDraft(d=>({...d,title:e.target.value}))}/></label>
               <label>Autor<input value={draft.author} onChange={e=>setDraft(d=>({...d,author:e.target.value}))}/></label>
+              <label>Categoria<select value={draft.categoryId} onChange={e=>setDraft(d=>({...d,categoryId:e.target.value}))}><option value="">Aguardando classificação</option>{categories.map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
               <label>Sinopse<textarea rows={6} value={draft.description} onChange={e=>setDraft(d=>({...d,description:e.target.value}))}/></label>
               <label>Capa<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setCoverFile(e.target.files?.[0]||null)}/></label>
               <div className="row wrap"><button className="btn" disabled={Boolean(busy)} onClick={()=>void saveMetadata(item)}>{busy===`${item.book.id}:metadata`?"Salvando...":"Salvar"}</button><button className="btn ghost" disabled={Boolean(busy)} onClick={()=>{setEditing(null);setCoverFile(null);}}>Cancelar</button></div>
