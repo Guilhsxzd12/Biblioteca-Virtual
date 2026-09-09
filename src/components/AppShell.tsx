@@ -22,7 +22,7 @@ export async function AppShell({children,allowInactive=false}:{children:React.Re
   const viewer=allowInactive?await getViewer():await requireApproved();
   if(!viewer.user)redirect("/login");
   if(!viewer.profile)redirect("/aguardando-aprovacao");
-  const profile=viewer.profile as Profile;const supabase=viewer.supabase;
+  const profile=viewer.profile as Profile;const supabase=viewer.supabase;const admin=profile.role==="admin";
   const [{data:categoryData},authorData]=await Promise.all([
     supabase.from("categories").select("id,name,slug,parent_id,sort_order").order("sort_order").order("name"),
     catalogAuthors(supabase)
