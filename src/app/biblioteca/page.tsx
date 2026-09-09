@@ -6,6 +6,7 @@ import { HorizontalBookSlider } from "@/components/HorizontalBookSlider";
 import { RealtimeBookCount } from "@/components/RealtimeBookCount";
 import { requireApproved } from "@/lib/auth";
 import { searchCatalog,catalogAuthors,catalogShelves } from "@/lib/catalog";
+import type { CatalogShelfMap } from "@/lib/catalog";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Category } from "@/lib/types";
 
@@ -48,10 +49,10 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<L
     :{size:12,sort:"recent"});
   const popularPromise=filteredMode?Promise.resolve(null):searchCatalog(admin,{size:12,sort:"popular"});
   const accessedPromise=filteredMode?Promise.resolve(null):searchCatalog(admin,{size:12,sort:"views"});
-  const homeShelvesPromise=filteredMode?Promise.resolve({}):catalogShelves(supabase,"",12);
+  const homeShelvesPromise=filteredMode?Promise.resolve({} as CatalogShelfMap):catalogShelves(supabase,"",12);
   const childShelvesPromise=selectedCategory&&!query&&!authorFilter&&childCategories.length
     ?catalogShelves(supabase,selectedCategory.slug,12)
-    :Promise.resolve({});
+    :Promise.resolve({} as CatalogShelfMap);
 
   const [result,popularResult,accessedResult,shelves,childShelves]=await Promise.all([
     resultPromise,popularPromise,accessedPromise,homeShelvesPromise,childShelvesPromise
