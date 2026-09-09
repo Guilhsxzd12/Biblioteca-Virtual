@@ -23,12 +23,12 @@ export async function AppShell({children,allowInactive=false}:{children:React.Re
   if(!viewer.user)redirect("/login");
   if(!viewer.profile)redirect("/aguardando-aprovacao");
   const profile=viewer.profile as Profile;const supabase=viewer.supabase;
-  const admin=profile.role==="admin";
   const [{data:categoryData},authorData]=await Promise.all([
-    supabase.from("categories").select("id,name,slug").order("name"),
+    supabase.from("categories").select("id,name,slug,parent_id,sort_order").order("sort_order").order("name"),
     catalogAuthors(supabase)
   ]);
-  const categories=(categoryData||[]) as Category[];
+  const allCategories=(categoryData||[]) as Category[];
+  const categories=allCategories.filter(category=>!category.parent_id);
   const authors=authorData.slice(0,18);
 
   const categoryLinks=categories.map(category=><Link key={category.id} href={`/biblioteca?categoria=${encodeURIComponent(category.slug)}`}>{category.name}</Link>);
