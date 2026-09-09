@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { BackToPrevious } from "@/components/BackToPrevious";
 import { BookCard } from "@/components/BookCard";
+import { CategoryHub } from "@/components/CategoryHub";
 import { HorizontalBookSlider } from "@/components/HorizontalBookSlider";
 import { RealtimeBookCount } from "@/components/RealtimeBookCount";
 import { requireApproved } from "@/lib/auth";
@@ -38,24 +40,34 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<L
   const categories=((categoryData||[]) as Category[]).sort(categoryOrder);
   const topLevelCategories=categories.filter(category=>!category.parent_id);
   const selectedCategory=categories.find(c=>c.slug===categoria);
+
+  if(selectedCategory?.parent_id){
+    const parent=categories.find(category=>category.id===selectedCategory.parent_id);
+    if(parent)redirect(`/biblioteca?categoria=${encodeURIComponent(parent.slug)}#subcategoria-${encodeURIComponent(selectedCategory.slug)}`);
+  }
+
   const childCategories=selectedCategory?categories.filter(c=>c.parent_id===selectedCategory.id).sort(categoryOrder):[];
   const filteredMode=Boolean(query||categoria||authorFilter||todos);
+  const categoryHubMode=Boolean(selectedCategory&&!selectedCategory.parent_id&&!query&&!authorFilter&&!todos);
   const parsedPage=Number.parseInt(pagina,10);
   const requestedPage=Number.isFinite(parsedPage)&&parsedPage>0?parsedPage:1;
   const pageSize=20;
 
   const resultPromise=searchCatalog(supabase,filteredMode
-    ?{search:query,category:categoria,author:authorFilter,page:requestedPage,size:pageSize,sort:"title"}
+    ?{search:query,category:categoria,author:authorFilter,page:categoryHubMode?1:requestedPage,size:categoryHubMode?30:pageSize,sort:"title"}
     :{size:12,sort:"recent"});
   const popularPromise=filteredMode?Promise.resolve(null):searchCatalog(admin,{size:12,sort:"popular"});
   const accessedPromise=filteredMode?Promise.resolve(null):searchCatalog(admin,{size:12,sort:"views"});
   const homeShelvesPromise=filteredMode?Promise.resolve({} as CatalogShelfMap):catalogShelves(supabase,"",12);
-  const childShelvesPromise=selectedCategory&&!query&&!authorFilter&&childCategories.length
-    ?catalogShelves(supabase,selectedCategory.slug,12)
-    :Promise.resolve({} as CatalogShelfMap);
+  const childResultsPromise=categoryHubMode&&childCategories.length
+    ?Promise.all(childCategories.map(async category=>{
+      const childResult=await searchCatalog(supabase,{category:category.slug,page:1,size:30,sort:"title"});
+      return {category,books:childResult.books,total:childResult.total};
+    }))
+    :Promise.resolve([]);
 
-  const [result,popularResult,accessedResult,shelves,childShelves]=await Promise.all([
-    resultPromise,popularPromise,accessedPromise,homeShelvesPromise,childShelvesPromise
+  const [result,popularResult,accessedResult,shelves,childResults]=await Promise.all([
+    resultPromise,popularPromise,accessedPromise,homeShelvesPromise,childResultsPromise
   ]);
 
   const totalBooks=result.total;
@@ -65,8 +77,6 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<L
   const mostAccessed=accessedResult?.books||[];
   const spotlight=popular[0]||mostAccessed[0]||recent[0];
   const homeCategories=filteredMode?topLevelCategories:topLevelCategories.filter(category=>(shelves[category.id]||[]).length>0);
-  const childGroups=childCategories.map(category=>({category,books:childShelves[category.id]||[]})).filter(group=>group.books.length>0);
-  const showSubcategoryShelves=Boolean(selectedCategory&&!query&&!authorFilter&&!todos&&childGroups.length);
   const activeBase:LibraryQuery={q:query||undefined,categoria:categoria||undefined,autor:authorFilter||undefined,todos:todos||undefined};
   const totalPages=Math.max(1,Math.ceil(result.total/pageSize));
   const currentPage=result.page;
@@ -99,21 +109,14 @@ export default async function LibraryPage({searchParams}:{searchParams:Promise<L
 
       {!filteredMode&&popular.length>0&&<section className="library-section metric-section"><div className="section-heading"><div><span className="eyebrow">PREFERIDOS</span><h2>Mais populares</h2><p>Uma seleção baseada nos favoritos dos leitores.</p></div></div><HorizontalBookSlider>{popular.map(book=><BookCard key={book.id} book={book}/>)}</HorizontalBookSlider></section>}
 
-      {filteredMode?<div className="catalog-results-layout">
+      {filteredMode?(categoryHubMode&&selectedCategory?<CategoryHub category={selectedCategory} initialBooks={result.books} total={result.total} children={childResults}/>:<div className="catalog-results-layout">
         <aside className="catalog-filter-sidebar">{filters}</aside>
         <section className="catalog-results-main">
           <details className="mobile-filter-drawer"><summary>Filtros e categorias</summary>{filters}</details>
           <div className="search-result-head"><BackToPrevious/><h1>{query?`Resultados para “${query}”`:authorFilter?authorFilter:selectedCategory?.name||"Todos os livros"}</h1><p>{result.total} {result.total===1?"livro encontrado":"livros encontrados"}{selectedCategory?` em ${selectedCategory.name}`:""}{result.total>pageSize?` • página ${currentPage} de ${totalPages}`:""}.</p></div>
-
-          {showSubcategoryShelves&&<section className="subcategory-hub" aria-label={`Subcategorias de ${selectedCategory?.name}`}>
-            <div className="subcategory-hub-head"><span className="eyebrow">EXPLORE A COLEÇÃO</span><h2>Encontre seu estilo</h2><p>As subcategorias aparecem somente dentro desta coleção e foram organizadas conforme os livros disponíveis no acervo.</p></div>
-            <div className="subcategory-hub-list">{childGroups.map(({category,books})=><section className="category-block subcategory-block" key={category.id}><div className="category-title"><div><span className="eyebrow">SUBCATEGORIA</span><h3>{category.name}</h3></div><Link href={`/biblioteca?categoria=${encodeURIComponent(category.slug)}`}>Ver todos <span>→</span></Link></div><HorizontalBookSlider>{books.map(book=><BookCard key={`${category.id}-${book.id}`} book={book}/>)}</HorizontalBookSlider></section>)}</div>
-            <div className="subcategory-all-heading"><span className="eyebrow">COLEÇÃO COMPLETA</span><h2>Todos em {selectedCategory?.name}</h2></div>
-          </section>}
-
           {result.total?<><div className="book-grid shelf-grid search-books-grid">{pagedFiltered.map(book=><BookCard key={book.id} book={book}/>)}</div>{totalPages>1&&<nav className="catalog-pagination" aria-label="Paginação do acervo">{currentPage>1&&<Link className="pagination-arrow" href={urlWith(activeBase,{pagina:String(currentPage-1)})} aria-label="Página anterior">←</Link>}{pageItems.map((item,index)=>typeof item==="number"?<Link key={item} className={`pagination-page ${item===currentPage?"active":""}`} href={urlWith(activeBase,{pagina:String(item)})} aria-current={item===currentPage?"page":undefined}>{item}</Link>:<span className="pagination-ellipsis" key={`ellipsis-${index}`}>…</span>)}{currentPage<totalPages&&<Link className="pagination-arrow" href={urlWith(activeBase,{pagina:String(currentPage+1)})} aria-label="Próxima página">→</Link>}</nav>}</>:<div className="empty-state"><h3>Nenhum livro encontrado</h3><p>Tente outro título, autor ou categoria.</p><Link className="btn ghost" href="/biblioteca">Limpar busca</Link></div>}
         </section>
-      </div>:<div className="category-sections">{homeCategories.map(category=>{const books=shelves[category.id]||[];if(!books.length)return null;return <section className="category-block" key={category.id}><div className="category-title"><div><span className="eyebrow">COLEÇÃO</span><h3>{category.name}</h3></div><Link href={`/biblioteca?categoria=${encodeURIComponent(category.slug)}`}>Ver todos <span>→</span></Link></div><HorizontalBookSlider>{books.map(book=><BookCard key={book.id} book={book}/>)}</HorizontalBookSlider></section>;})}</div>}
+      </div>):<div className="category-sections">{homeCategories.map(category=>{const books=shelves[category.id]||[];if(!books.length)return null;return <section className="category-block" key={category.id}><div className="category-title"><div><span className="eyebrow">COLEÇÃO</span><h3>{category.name}</h3></div><Link href={`/biblioteca?categoria=${encodeURIComponent(category.slug)}`}>Ver todos <span>→</span></Link></div><HorizontalBookSlider>{books.map(book=><BookCard key={book.id} book={book}/>)}</HorizontalBookSlider></section>;})}</div>}
     </div>
   </main></AppShell>;
 }
