@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound,permanentRedirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { FavoriteButton } from "@/components/FavoriteButton";
@@ -23,15 +23,18 @@ export default async function BookPage({params}:{params:Promise<{slug:string}>})
   const {slug}=await params;
   const {supabase,user,profile}=await requireApproved();
   const catalogDb=createAdminSupabaseClient();
+  const lookupColumn=/^[0-9a-f-]{36}$/i.test(slug)?"id":"slug";
 
-  const result=await catalogDb.from("books").select("*,categories(name)").eq("slug",slug).eq("published",true).maybeSingle();
-  if(result.error)console.error("[book_detail]",{slug,code:result.error.code,message:result.error.message});
-  let book=result.data;
+  const sessionResult=await supabase.from("books").select("*,categories(name)").eq(lookupColumn,slug).eq("published",true).maybeSingle();
+  if(sessionResult.error)console.error("[book_detail_session]",{slug,lookupColumn,code:sessionResult.error.code,message:sessionResult.error.message});
+  let book=sessionResult.data;
 
-  if(!book&&/^[0-9a-f-]{36}$/i.test(slug)){
-    const legacy=await catalogDb.from("books").select("*,categories(name)").eq("id",slug).eq("published",true).maybeSingle();
-    if(legacy.data)permanentRedirect(`/livro/${legacy.data.slug}`);
+  if(!book){
+    const adminResult=await catalogDb.from("books").select("*,categories(name)").eq(lookupColumn,slug).eq("published",true).maybeSingle();
+    if(adminResult.error)console.error("[book_detail_admin]",{slug,lookupColumn,code:adminResult.error.code,message:adminResult.error.message});
+    book=adminResult.data;
   }
+
   if(!book)notFound();
   const b=book as Book;
 
