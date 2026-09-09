@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound,permanentRedirect } from "next/navigation";
 import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppShell } from "@/components/AppShell";
@@ -35,6 +35,7 @@ export default async function BookPage({params}:{params:Promise<{slug:string}>})
   let book=await findPublishedBook(supabase,lookupColumn,slug);
   if(!book)book=await findPublishedBook(catalogDb,lookupColumn,slug);
   if(!book)notFound();
+  if(lookupColumn==="id"&&book.slug)permanentRedirect(`/livro/${encodeURIComponent(book.slug)}`);
 
   let categoryName:string|null=null;
   if(book.category_id){
