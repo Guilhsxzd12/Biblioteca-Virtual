@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Book } from "@/lib/types";
 
+export type CatalogShelfMap=Record<string,Book[]>;
+
 export async function searchCatalog(db:SupabaseClient, options:{search?:string;category?:string;author?:string;page?:number;size?:number;sort?:"title"|"recent"|"popular"|"views"}={}){
   const {data,error}=await db.rpc("catalog_search",{
     p_search:options.search||"",p_category:options.category||"",p_author:options.author||"",
@@ -17,4 +19,13 @@ export async function catalogAuthors(db:SupabaseClient){
   const {data,error}=await db.rpc("catalog_authors");
   if(error){console.error("[catalog_authors]",{code:error.code,message:error.message});return [] as string[];}
   return data as string[];
+}
+
+export async function catalogShelves(db:SupabaseClient,parentSlug="",size=12){
+  const {data,error}=await db.rpc("catalog_shelves",{p_parent_slug:parentSlug,p_size:size});
+  if(error){
+    console.error("[catalog_shelves]",{code:error.code,message:error.message,parentSlug});
+    return {} as CatalogShelfMap;
+  }
+  return (data||{}) as CatalogShelfMap;
 }
