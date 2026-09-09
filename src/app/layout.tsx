@@ -7,6 +7,7 @@ import "./capsule-header.css";
 import "./oda-theme.css";
 import "./oda-exact-colors.css";
 import "./site-polish.css";
+import "./category-hub.css";
 import "./language-files.css";
 import "./responsive-audit.css";
 import "./account.css";
